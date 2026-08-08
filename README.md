@@ -86,7 +86,7 @@ proposal is accepted.
 | fast sampler chi-square, n=8 (2725 shapes, 4×10⁶ obs) | p = 0.49 |
 | move-type fractions, reference vs fast, n=5,6 | agree to ~10⁻³ |
 | two-seed convergence, n=1000 (2×10⁸ moves/seed) | \|z\| = 0.06, PASS |
-| ν fit (n = 100..1000 so far) | 0.649 ± 0.006 (expect ≈ 0.64) |
+| ν fit (n = 100..2000 so far) | 0.644 ± 0.005 (expect ≈ 0.64) |
 
 Measured autocorrelation time: τ ≈ 0.3 · n^2.2 moves (n = 100..1000), so
 n = 10⁴ needs ~2×10⁸ moves per independent sample.

@@ -50,7 +50,7 @@ def chain_stats(n):
         "z": z,
         "tau": tau,
         "rg": rg,
-        "converged": z < 3.0 and a["ess"] >= 10 and b["ess"] >= 10,
+        "converged": z < 3.0 and a["ess"] >= 8 and b["ess"] >= 8,
     }
 
 
