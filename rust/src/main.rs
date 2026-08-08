@@ -121,6 +121,30 @@ impl State {
             }
             _ => panic!("unknown init {init}"),
         };
+        Self::from_points(pts)
+    }
+
+    /// Resume from a cell dump ("x y" per line).
+    fn from_file(path: &str) -> Self {
+        let text = std::fs::read_to_string(path).expect("read init file");
+        let mut pts: Vec<(i64, i64)> = Vec::new();
+        for line in text.lines() {
+            let mut it = line.split_whitespace();
+            let x: i64 = it.next().unwrap().parse().unwrap();
+            let y: i64 = it.next().unwrap().parse().unwrap();
+            pts.push((x, y));
+        }
+        let minx = pts.iter().map(|p| p.0).min().unwrap();
+        let miny = pts.iter().map(|p| p.1).min().unwrap();
+        Self::from_points(
+            pts.iter()
+                .map(|p| ((p.0 - minx) as usize, (p.1 - miny) as usize))
+                .collect(),
+        )
+    }
+
+    fn from_points(pts: Vec<(usize, usize)>) -> Self {
+        let n = pts.len();
         let bw = pts.iter().map(|p| p.0).max().unwrap() + 1;
         let bh = pts.iter().map(|p| p.1).max().unwrap() + 1;
         let mx = (bw / 4).max(16);
@@ -813,7 +837,12 @@ fn main() {
             let dump_path = args.get("dump-final").cloned();
             let dump_every: u64 = get(&args, "dump-every", 0);
             let dump_prefix = args.get("dump-prefix").cloned();
-            let mut st = State::new(n, &init);
+            let mut st = match args.get("init-file") {
+                Some(p) => State::from_file(p),
+                None => State::new(n, &init),
+            };
+            let n = st.cells.len();
+            st.check_invariants(n);
             let mut writer = out_path.map(|p| {
                 let f = std::fs::File::create(p).expect("create out");
                 let mut w = std::io::BufWriter::new(f);
