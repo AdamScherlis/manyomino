@@ -85,10 +85,27 @@ proposal is accepted.
 | fast sampler chi-square, n=6 (2×10⁶ obs) | p = 0.39 |
 | fast sampler chi-square, n=8 (2725 shapes, 4×10⁶ obs) | p = 0.49 |
 | move-type fractions, reference vs fast, n=5,6 | agree to ~10⁻³ |
-| two-seed convergence, n=1000 (2×10⁸ moves/seed) | \|z\| = 0.06, PASS |
-| ν fit (n = 100..2000 so far) | 0.644 ± 0.005 (expect ≈ 0.64) |
+| mixed-kernel chi-square, n=5 / n=6 / n=8 | p = 0.94 / 0.19 / 0.43 |
+| cycle + near-miss stats vs exact census, n=12 (505,861 shapes) | all \|z\| ≤ 1.4 |
+| two-seed convergence, n=1000 / 2000 / 3000 / 5000 / 10000 | \|z\| = 0.06 / 0.49 / 0.22 / 1.28 / 0.09, all PASS |
+| ν fit, n = 100..10000 | 0.6439 ± 0.0015 (expect ≈ 0.6408) |
 
-Measured autocorrelation time: τ ≈ 0.3 · n^2.2 moves (n = 100..1000), so
-n = 10⁴ needs ~2×10⁸ moves per independent sample.
+Measured autocorrelation time, single-cell kernel: τ ≈ 0.3 · n^2.2 moves.
+The mixed kernel (33% cut-and-paste branch moves, see below) collapses this:
+τ(n=1000) drops from ~2×10⁶ to 2.9×10⁴ moves and τ(n=10⁴) from ~2×10⁸ to
+2.2×10⁵ — a ~10³ speedup at the largest sizes.
+
+## Cut-and-paste branch moves
+
+Nonlocal move mixed at 1/3 probability with the single-cell move: pick a
+uniform ordered adjacent pair (u, v); if that adjacency is a *bridge* of the
+cell graph (alternating two-front BFS excluding the edge), detach the
+component on v's side (≤ n/2 cells), apply a uniform lattice symmetry about
+v, and re-attach it at a uniform (cell, direction) of the remainder,
+requiring the placement to touch the remainder at exactly one contact.  A
+bridge is the unique edge between the two sides, so the adjacency count is
+conserved and forward/reverse selection probabilities are equal: the kernel
+is symmetric with no Hastings factor.  Validated by the same chi-square
+battery (see table) before production use.
 
 (vibecoded — proceed at own risk. if it breaks you get to keep both pieces.)
