@@ -86,9 +86,12 @@ struct State {
     per: Vec<u32>,
     visited: Vec<u32>,
     stamp: u32,
-    /// per-front visited bitmaps for the multifront BFS; bits are cleared
-    /// via the queues after every call, so they stay all-zero between calls
-    fbits: Vec<Vec<u64>>,
+    /// 4 neighbor cell-indices per cell (NONE = empty side), kept in sync
+    /// with the cell set; lets the BFS run over a compact index space
+    nbr: Vec<[u32; 4]>,
+    /// per-cell visit stamps for the multifront BFS (value = vbase + front)
+    vstamp: Vec<u64>,
+    vbase: u64,
     queue: Vec<u32>,
     fqueues: Vec<Vec<u32>>,
     // coordinate sums for O(1) radius of gyration
@@ -133,7 +136,9 @@ impl State {
             per: Vec::new(),
             visited: vec![0; w * h],
             stamp: 0,
-            fbits: vec![vec![0; (w * h + 63) / 64]; 4],
+            nbr: Vec::with_capacity(n),
+            vstamp: vec![0; n],
+            vbase: 1,
             queue: Vec::new(),
             fqueues: vec![Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             sx: 0,
@@ -161,10 +166,29 @@ impl State {
         (self.occ_bits[(pos >> 6) as usize] >> (pos & 63)) & 1 != 0
     }
 
+    const NONE: u32 = u32::MAX;
+
+    #[inline(always)]
+    fn dirs(&self) -> [i64; 4] {
+        let w = self.w as i64;
+        [1, -1, w, -w] // opposite of slot d is slot d ^ 1
+    }
+
     #[inline(always)]
     fn add_cell(&mut self, pos: u32) {
+        let i = self.cells.len() as u32;
         self.cells.push(pos);
-        self.cell_idx[pos as usize] = self.cells.len() as u32;
+        self.cell_idx[pos as usize] = i + 1;
+        let mut links = [Self::NONE; 4];
+        for (d, dd) in self.dirs().into_iter().enumerate() {
+            let q = (pos as i64 + dd) as u32;
+            if self.occ(q) {
+                let j = self.cell_idx[q as usize] - 1;
+                links[d] = j;
+                self.nbr[j as usize][d ^ 1] = i;
+            }
+        }
+        self.nbr.push(links);
         self.occ_bits[(pos >> 6) as usize] |= 1u64 << (pos & 63);
         let (x, y) = ((pos as usize % self.w) as i64, (pos as usize / self.w) as i64);
         self.sx += x;
@@ -173,13 +197,32 @@ impl State {
         self.sy2 += y * y;
     }
 
-    /// Swap-remove the cell at index `ci` (position `pos`).
+    /// Swap-remove the cell at index `ci` (position `pos`), keeping the
+    /// adjacency links consistent.
     #[inline(always)]
     fn remove_cell(&mut self, ci: usize, pos: u32) {
-        let last = *self.cells.last().unwrap();
-        self.cells[ci] = last;
-        self.cell_idx[last as usize] = ci as u32 + 1;
+        // unlink ci from its neighbors
+        for d in 0..4 {
+            let j = self.nbr[ci][d];
+            if j != Self::NONE {
+                self.nbr[j as usize][d ^ 1] = Self::NONE;
+            }
+        }
+        let last_idx = self.cells.len() - 1;
+        if ci != last_idx {
+            let last_pos = self.cells[last_idx];
+            self.cells[ci] = last_pos;
+            self.cell_idx[last_pos as usize] = ci as u32 + 1;
+            self.nbr[ci] = self.nbr[last_idx];
+            for d in 0..4 {
+                let j = self.nbr[ci][d];
+                if j != Self::NONE {
+                    self.nbr[j as usize][d ^ 1] = ci as u32;
+                }
+            }
+        }
         self.cells.pop();
+        self.nbr.pop();
         self.cell_idx[pos as usize] = 0;
         self.occ_bits[(pos >> 6) as usize] &= !(1u64 << (pos & 63));
         let (x, y) = ((pos as usize % self.w) as i64, (pos as usize / self.w) as i64);
@@ -232,10 +275,11 @@ impl State {
             || self.occ((p - w) as u32)
     }
 
-    /// True iff A - {c} stays connected.  Cheap tests first (single occupied
-    /// neighbor; 3x3 ring arc test), then BFS with early exit.
+    /// True iff A - {cells[ci]} stays connected.  Cheap tests first (single
+    /// occupied neighbor; 3x3 ring arc test), then BFS with early exit.
     #[inline(always)]
-    fn removable(&mut self, c: u32) -> bool {
+    fn removable(&mut self, ci: usize) -> bool {
+        let c = self.cells[ci];
         let w = self.w as i64;
         let p = c as i64;
         // ring in cyclic order: E, NE, N, NW, W, SW, S, SE
@@ -305,8 +349,25 @@ impl State {
             self.n_ring_pass += 1;
             return true;
         }
+        // Seed each front with the *orthogonal* members of its arc, as cell
+        // indices from the adjacency links (diagonal arc members are reached
+        // by the BFS itself; ring index -> direction slot: E->0 N->3 W->1
+        // S->2).  The BFS then runs entirely in compact index space.
+        const RING_TO_SLOT: [usize; 8] = [0, 9, 3, 9, 1, 9, 2, 9];
+        let mut seeds = [[0u32; 4]; 4];
+        let mut seed_cnt = [0usize; 4];
+        for f in 0..nf {
+            let a = fronts[f];
+            for j in 0..arc_len[a] {
+                let ri = arcs[a][j];
+                if ri % 2 == 0 {
+                    seeds[f][seed_cnt[f]] = self.nbr[ci][RING_TO_SLOT[ri]];
+                    seed_cnt[f] += 1;
+                }
+            }
+        }
         self.n_bfs += 1;
-        self.multifront_removable(c, &offs, &arcs, &arc_len, &fronts, nf)
+        self.multifront_removable(ci as u32, &seeds, &seed_cnt, nf)
     }
 
     /// Alternating multi-source BFS in A - {c}: one front per neighbor arc,
@@ -316,24 +377,20 @@ impl State {
     /// cut test costs O(smallest component), not O(n).
     fn multifront_removable(
         &mut self,
-        c: u32,
-        offs: &[i64; 8],
-        arcs: &[[usize; 8]; 4],
-        arc_len: &[usize; 4],
-        fronts: &[usize; 4],
+        ci: u32,
+        seeds: &[[u32; 4]; 4],
+        seed_cnt: &[usize; 4],
         nf: usize,
     ) -> bool {
-        let w = self.w as i64;
-        let p = c as i64;
+        let base = self.vbase;
+        self.vbase += nf as u64;
         let mut queues = std::mem::take(&mut self.fqueues);
-        let mut fbits = std::mem::take(&mut self.fbits);
         let mut heads = [0usize; 4];
         for f in 0..nf {
             queues[f].clear();
-            let a = fronts[f];
-            for j in 0..arc_len[a] {
-                let v = (p + offs[arcs[a][j]]) as u32;
-                fbits[f][(v >> 6) as usize] |= 1u64 << (v & 63);
+            for j in 0..seed_cnt[f] {
+                let v = seeds[f][j];
+                self.vstamp[v as usize] = base + f as u64;
                 queues[f].push(v);
             }
         }
@@ -354,29 +411,22 @@ impl State {
             for f in 0..nf {
                 if heads[f] < queues[f].len() {
                     any = true;
-                    let u = queues[f][heads[f]] as i64;
+                    let u = queues[f][heads[f]] as usize;
                     heads[f] += 1;
                     self.n_bfs_nodes += 1;
-                    for d in [1, -1, w, -w] {
-                        let vp = u + d;
-                        let v = vp as u32;
-                        if vp == p || !self.occ(v) {
+                    let links = self.nbr[u];
+                    for d in 0..4 {
+                        let v = links[d];
+                        if v == Self::NONE || v == ci {
                             continue;
                         }
-                        let (wi, bi) = ((v >> 6) as usize, v & 63);
-                        if fbits[f][wi] >> bi & 1 != 0 {
-                            continue; // already visited by own front
-                        }
-                        let mut owner = usize::MAX;
-                        for g in 0..nf {
-                            if g != f && fbits[g][wi] >> bi & 1 != 0 {
-                                owner = g;
-                                break;
+                        let t = self.vstamp[v as usize];
+                        if t >= base {
+                            let g = (t - base) as u8;
+                            if g == f as u8 {
+                                continue;
                             }
-                        }
-                        if owner != usize::MAX {
-                            let (rf, rg) =
-                                (find(&mut parent, f as u8), find(&mut parent, owner as u8));
+                            let (rf, rg) = (find(&mut parent, f as u8), find(&mut parent, g));
                             if rf != rg {
                                 parent[rf as usize] = rg;
                                 roots -= 1;
@@ -385,7 +435,7 @@ impl State {
                                 }
                             }
                         } else {
-                            fbits[f][wi] |= 1u64 << bi;
+                            self.vstamp[v as usize] = base + f as u64;
                             queues[f].push(v);
                         }
                     }
@@ -405,15 +455,10 @@ impl State {
                 break roots == 1;
             }
         };
-        // undo the visited bits (every marked node is in exactly one queue)
-        for f in 0..nf {
-            for &v in queues[f].iter() {
-                fbits[f][(v >> 6) as usize] &= !(1u64 << (v & 63));
-            }
-            queues[f].clear();
+        for q in &mut queues {
+            q.clear();
         }
         self.fqueues = queues;
-        self.fbits = fbits;
         result
     }
 
@@ -455,7 +500,7 @@ impl State {
         let n = self.cells.len();
         let ci = rng.below(n as u64) as usize;
         let c = self.cells[ci];
-        if !self.removable(c) {
+        if !self.removable(ci) {
             self.n_cut_reject += 1;
             return false;
         }
@@ -516,7 +561,7 @@ impl State {
         self.cell_idx = vec![0; nw * nh];
         self.per_idx = vec![0; nw * nh];
         self.visited = vec![0; nw * nh];
-        self.fbits = vec![vec![0; (nw * nh + 63) / 64]; 4];
+        self.nbr.clear();
         self.stamp = 0;
         self.per.clear();
         self.sx = 0;
@@ -609,6 +654,20 @@ impl State {
         for &q in &fresh {
             assert!(self.per_idx[q as usize] != 0, "perimeter membership");
         }
+        // adjacency links == from-scratch recompute
+        assert_eq!(self.nbr.len(), self.cells.len(), "nbr length");
+        for i in 0..self.cells.len() {
+            let pos = self.cells[i] as i64;
+            for (d, dd) in self.dirs().into_iter().enumerate() {
+                let q = (pos + dd) as u32;
+                let want = if self.occ(q) {
+                    self.cell_idx[q as usize] - 1
+                } else {
+                    Self::NONE
+                };
+                assert_eq!(self.nbr[i][d], want, "nbr link");
+            }
+        }
         // coordinate sums
         let (mut sx, mut sy, mut sx2, mut sy2) = (0i64, 0i64, 0i64, 0i64);
         for &p in &self.cells {
@@ -695,8 +754,7 @@ fn main() {
             let mut acc = 0u64;
             for _ in 0..steps {
                 let ci = rng.below(st.cells.len() as u64) as usize;
-                let c = st.cells[ci];
-                if st.removable(c) {
+                if st.removable(ci) {
                     acc += 1;
                 }
             }
@@ -743,6 +801,8 @@ fn main() {
             let check_every: u64 = get(&args, "check-every", 0);
             let out_path = args.get("out").cloned();
             let dump_path = args.get("dump-final").cloned();
+            let dump_every: u64 = get(&args, "dump-every", 0);
+            let dump_prefix = args.get("dump-prefix").cloned();
             let mut st = State::new(n, &init);
             let mut writer = out_path.map(|p| {
                 let f = std::fs::File::create(p).expect("create out");
@@ -763,6 +823,17 @@ fn main() {
                 }
                 if check_every > 0 && done % check_every == 0 {
                     st.check_invariants(n);
+                }
+                if dump_every > 0 && done % dump_every == 0 {
+                    if let Some(prefix) = dump_prefix.as_ref() {
+                        let f = std::fs::File::create(format!("{prefix}_{done}.txt"))
+                            .expect("create dump");
+                        let mut w = std::io::BufWriter::new(f);
+                        for (x, y) in st.coords() {
+                            writeln!(w, "{x} {y}").unwrap();
+                        }
+                        w.flush().unwrap();
+                    }
                 }
             }
             let dt = t0.elapsed().as_secs_f64();
@@ -804,10 +875,11 @@ fn main() {
                             // against a full BFS on a batch of cells
                             let m = nn.min(64);
                             for _ in 0..m {
-                                let c = st.cells[r.below(nn as u64) as usize];
+                                let idx = r.below(nn as u64) as usize;
+                                let cpos = st.cells[idx];
                                 assert_eq!(
-                                    st.removable(c),
-                                    st.removable_ref(c),
+                                    st.removable(idx),
+                                    st.removable_ref(cpos),
                                     "removable mismatch at n={nn}"
                                 );
                             }
