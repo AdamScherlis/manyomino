@@ -89,9 +89,9 @@ struct State {
     /// 4 neighbor cell-indices per cell (NONE = empty side), kept in sync
     /// with the cell set; lets the BFS run over a compact index space
     nbr: Vec<[u32; 4]>,
-    /// per-cell visit stamps for the multifront BFS (value = vbase + front)
-    vstamp: Vec<u64>,
-    vbase: u64,
+    /// per-front visited bitplanes over cell *indices* (~n/8 bytes each, so
+    /// they live in L1); bits are undone via the queues after every call
+    fb: Vec<Vec<u64>>,
     queue: Vec<u32>,
     fqueues: Vec<Vec<u32>>,
     // coordinate sums for O(1) radius of gyration
@@ -137,8 +137,7 @@ impl State {
             visited: vec![0; w * h],
             stamp: 0,
             nbr: Vec::with_capacity(n),
-            vstamp: vec![0; n],
-            vbase: 1,
+            fb: vec![vec![0; (n + 63) / 64]; 4],
             queue: Vec::new(),
             fqueues: vec![Vec::new(), Vec::new(), Vec::new(), Vec::new()],
             sx: 0,
@@ -382,15 +381,14 @@ impl State {
         seed_cnt: &[usize; 4],
         nf: usize,
     ) -> bool {
-        let base = self.vbase;
-        self.vbase += nf as u64;
         let mut queues = std::mem::take(&mut self.fqueues);
+        let mut fb = std::mem::take(&mut self.fb);
         let mut heads = [0usize; 4];
         for f in 0..nf {
             queues[f].clear();
             for j in 0..seed_cnt[f] {
                 let v = seeds[f][j];
-                self.vstamp[v as usize] = base + f as u64;
+                fb[f][(v >> 6) as usize] |= 1u64 << (v & 63);
                 queues[f].push(v);
             }
         }
@@ -420,13 +418,20 @@ impl State {
                         if v == Self::NONE || v == ci {
                             continue;
                         }
-                        let t = self.vstamp[v as usize];
-                        if t >= base {
-                            let g = (t - base) as u8;
-                            if g == f as u8 {
-                                continue;
+                        let (wi, bi) = ((v >> 6) as usize, v & 63);
+                        if fb[f][wi] >> bi & 1 != 0 {
+                            continue; // already visited by own front
+                        }
+                        let mut owner = usize::MAX;
+                        for g in 0..nf {
+                            if g != f && fb[g][wi] >> bi & 1 != 0 {
+                                owner = g;
+                                break;
                             }
-                            let (rf, rg) = (find(&mut parent, f as u8), find(&mut parent, g));
+                        }
+                        if owner != usize::MAX {
+                            let (rf, rg) =
+                                (find(&mut parent, f as u8), find(&mut parent, owner as u8));
                             if rf != rg {
                                 parent[rf as usize] = rg;
                                 roots -= 1;
@@ -435,7 +440,7 @@ impl State {
                                 }
                             }
                         } else {
-                            self.vstamp[v as usize] = base + f as u64;
+                            fb[f][wi] |= 1u64 << bi;
                             queues[f].push(v);
                         }
                     }
@@ -455,10 +460,15 @@ impl State {
                 break roots == 1;
             }
         };
-        for q in &mut queues {
-            q.clear();
+        // undo the visited bits (every marked cell is in exactly one queue)
+        for f in 0..nf {
+            for &v in queues[f].iter() {
+                fb[f][(v >> 6) as usize] &= !(1u64 << (v & 63));
+            }
+            queues[f].clear();
         }
         self.fqueues = queues;
+        self.fb = fb;
         result
     }
 
