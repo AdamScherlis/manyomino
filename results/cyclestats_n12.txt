@@ -1,0 +1,15 @@
+shapes=505861 observations=6000000 unknown_shapes=0
+
+cycle count: exact freq vs sampled
+  c=0: exact 0.530486  sampled 0.530233  z=-1.24  (268352 shapes)
+  c=1: exact 0.323199  sampled 0.323387  z=+0.98  (163494 shapes)
+  c=2: exact 0.116123  sampled 0.116136  z=+0.10  (58742 shapes)
+  c=3: exact 0.025766  sampled 0.025776  z=+0.16  (13034 shapes)
+  c=4: exact 0.004124  sampled 0.004161  z=+1.41  (2086 shapes)
+  c=5: exact 0.000299  sampled 0.000304  z=+0.85  (151 shapes)
+  c=6: exact 0.000004  sampled 0.000004  z=-0.35  (2 shapes)
+
+diagonal near-miss count: exact freq vs sampled
+  m=0: exact 0.932317  sampled 0.931990  z=-3.19  (471623 shapes)
+  m=1: exact 0.067113  sampled 0.067428  z=+3.08  (33950 shapes)
+  m=2: exact 0.000569  sampled 0.000582  z=+1.30  (288 shapes)

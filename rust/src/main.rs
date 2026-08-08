@@ -108,6 +108,11 @@ struct State {
     n_bfs: u64,
     n_bfs_nodes: u64,
     n_rebuild: u64,
+    n_cp_nopair: u64,
+    n_cp_notbridge: u64,
+    n_cp_toobig: u64,
+    n_cp_invalid: u64,
+    n_cp_accept: u64,
 }
 
 impl State {
@@ -176,6 +181,11 @@ impl State {
             n_bfs: 0,
             n_bfs_nodes: 0,
             n_rebuild: 0,
+            n_cp_nopair: 0,
+            n_cp_notbridge: 0,
+            n_cp_toobig: 0,
+            n_cp_invalid: 0,
+            n_cp_accept: 0,
         };
         for (x, y) in pts {
             st.add_cell(((y + my) * w + x + mx) as u32);
@@ -496,6 +506,312 @@ impl State {
         result
     }
 
+    /// If the adjacency edge (ui, vi) is a bridge of the cell graph, return
+    /// the cell *indices* of the component containing vi (must be <= n/2
+    /// cells, else None).  Alternating two-front BFS excluding that edge, so
+    /// a non-bridge (cycle edge) is detected as soon as the fronts meet.
+    fn bridge_component(&mut self, ui: usize, vi: usize) -> Option<Vec<u32>> {
+        let n = self.cells.len();
+        let mut queues = std::mem::take(&mut self.fqueues);
+        let mut fb = std::mem::take(&mut self.fb);
+        queues[0].clear();
+        queues[1].clear();
+        fb[0][ui >> 6] |= 1u64 << (ui & 63);
+        fb[1][vi >> 6] |= 1u64 << (vi & 63);
+        queues[0].push(ui as u32);
+        queues[1].push(vi as u32);
+        let mut heads = [0usize; 2];
+        // verdict: None undecided; Some(true) bridge; Some(false) not
+        let mut verdict: Option<bool> = None;
+        'outer: while verdict.is_none() {
+            for f in 0..2 {
+                if heads[f] >= queues[f].len() {
+                    verdict = Some(true); // side f fully explored, never met
+                    break 'outer;
+                }
+                let x = queues[f][heads[f]] as usize;
+                heads[f] += 1;
+                self.n_bfs_nodes += 1;
+                let links = self.nbr[x];
+                for d in 0..4 {
+                    let y = links[d];
+                    if y == Self::NONE {
+                        continue;
+                    }
+                    let yu = y as usize;
+                    if (x == ui && yu == vi) || (x == vi && yu == ui) {
+                        continue; // the cut edge itself
+                    }
+                    let (wi, bi) = ((y >> 6) as usize, y & 63);
+                    if fb[f][wi] >> bi & 1 != 0 {
+                        continue;
+                    }
+                    if fb[1 - f][wi] >> bi & 1 != 0 {
+                        verdict = Some(false); // fronts met: cycle edge
+                        break 'outer;
+                    }
+                    fb[f][wi] |= 1u64 << bi;
+                    queues[f].push(y);
+                }
+            }
+        }
+        let mut result = None;
+        if verdict == Some(true) {
+            // one side is complete; figure out sizes, enumerate the v side
+            let u_done = heads[0] >= queues[0].len();
+            if u_done {
+                let b_size = n - queues[0].len();
+                if 2 * b_size <= n {
+                    // v side is exactly half; finish enumerating it
+                    while heads[1] < queues[1].len() {
+                        let x = queues[1][heads[1]] as usize;
+                        heads[1] += 1;
+                        let links = self.nbr[x];
+                        for d in 0..4 {
+                            let y = links[d];
+                            if y == Self::NONE || (x == vi && y as usize == ui) {
+                                continue;
+                            }
+                            let (wi, bi) = ((y >> 6) as usize, y & 63);
+                            if fb[1][wi] >> bi & 1 == 0 {
+                                fb[1][wi] |= 1u64 << bi;
+                                queues[1].push(y);
+                            }
+                        }
+                    }
+                    result = Some(queues[1].clone());
+                } else {
+                    self.n_cp_toobig += 1;
+                }
+            } else {
+                // v side complete: B enumerated in queues[1]
+                if 2 * queues[1].len() <= n {
+                    result = Some(queues[1].clone());
+                } else {
+                    self.n_cp_toobig += 1;
+                }
+            }
+        } else {
+            self.n_cp_notbridge += 1;
+        }
+        for f in 0..2 {
+            for &v in queues[f].iter() {
+                fb[f][(v >> 6) as usize] &= !(1u64 << (v & 63));
+            }
+            queues[f].clear();
+        }
+        self.fqueues = queues;
+        self.fb = fb;
+        result
+    }
+
+    /// Nonlocal cut-and-paste move: detach the branch hanging off a bridge
+    /// edge, apply a random lattice symmetry, reattach at a uniform
+    /// (cell, direction) of the remainder requiring exactly one contact.
+    /// Selection probabilities are equal in both directions (a bridge is the
+    /// unique edge between the sides, so the adjacency count is conserved),
+    /// making the kernel symmetric with no Hastings factor.
+    fn cutpaste(&mut self, rng: &mut Rng) -> bool {
+        let n = self.cells.len();
+        let ui = rng.below(n as u64) as usize;
+        let d0 = rng.below(4) as usize;
+        let vi_ = self.nbr[ui][d0];
+        if vi_ == Self::NONE {
+            self.n_cp_nopair += 1;
+            return false;
+        }
+        let vi = vi_ as usize;
+        let Some(bidx) = self.bridge_component(ui, vi) else {
+            return false;
+        };
+        let w0 = self.w as i64;
+        let pivot = self.cells[vi] as i64;
+        let (pvx, pvy) = (pivot % w0, pivot / w0);
+        let bpos: Vec<u32> = bidx.iter().map(|&i| self.cells[i as usize]).collect();
+        let brel: Vec<(i64, i64)> = bpos
+            .iter()
+            .map(|&p| ((p as i64 % w0) - pvx, (p as i64 / w0) - pvy))
+            .collect();
+        let g = rng.below(8);
+        let gb: Vec<(i64, i64)> = brel
+            .iter()
+            .map(|&(x, y)| match g {
+                0 => (x, y),
+                1 => (-y, x),
+                2 => (-x, -y),
+                3 => (y, -x),
+                4 => (x, -y),
+                5 => (-x, y),
+                6 => (y, x),
+                _ => (-y, -x),
+            })
+            .collect();
+        // detach B
+        for &p in &bpos {
+            let ci = self.cell_idx[p as usize] as usize - 1;
+            self.remove_cell(ci, p);
+        }
+        // attachment choice: uniform cell of the remainder + direction
+        let upi = rng.below(self.cells.len() as u64) as usize;
+        let dp = rng.below(4) as usize;
+        // grid may need to grow to hold the placement; a rebuild shifts all
+        // coordinates, so track the shift and re-derive positions by index
+        let ext = gb
+            .iter()
+            .map(|&(x, y)| x.abs().max(y.abs()))
+            .max()
+            .unwrap() as usize;
+        let mut shift = (0i64, 0i64);
+        let mut wcur = self.w as i64;
+        {
+            let up = self.cells[upi] as i64;
+            let (ux, uy) = (up % wcur, up / wcur);
+            let dvec = [(1i64, 0i64), (-1, 0), (0, 1), (0, -1)][dp];
+            let (tx, ty) = (ux + dvec.0, uy + dvec.1);
+            let (minx, maxx) = (
+                tx + gb.iter().map(|p| p.0).min().unwrap(),
+                tx + gb.iter().map(|p| p.0).max().unwrap(),
+            );
+            let (miny, maxy) = (
+                ty + gb.iter().map(|p| p.1).min().unwrap(),
+                ty + gb.iter().map(|p| p.1).max().unwrap(),
+            );
+            if minx < 2
+                || miny < 2
+                || maxx >= self.w as i64 - 2
+                || maxy >= self.h as i64 - 2
+            {
+                shift = self.rebuild_extra(ext + 4);
+                wcur = self.w as i64;
+            }
+        }
+        let up = self.cells[upi] as i64;
+        let (ux, uy) = (up % wcur, up / wcur);
+        let dvec = [(1i64, 0i64), (-1, 0), (0, 1), (0, -1)][dp];
+        let (tx, ty) = (ux + dvec.0, uy + dvec.1);
+        // validity: every placed cell empty, and exactly one adjacency to the
+        // remainder (the intended contact at u' is included in the count)
+        let mut contacts = 0u32;
+        let mut ok = true;
+        for &(bx, by) in &gb {
+            let (x, y) = (tx + bx, ty + by);
+            let p = (y * wcur + x) as u32;
+            if self.occ(p) {
+                ok = false;
+                break;
+            }
+            for dd in [1, -1, wcur, -wcur] {
+                if self.occ((p as i64 + dd) as u32) {
+                    contacts += 1;
+                }
+            }
+        }
+        if !ok || contacts != 1 {
+            // reject: restore B at its original spot (shifted if rebuilt)
+            self.n_cp_invalid += 1;
+            let rebuilt = shift != (0, 0);
+            let mut restored: Vec<u32> = Vec::with_capacity(bpos.len());
+            for &p in &bpos {
+                let (x, y) = ((p as i64 % w0) + shift.0, (p as i64 / w0) + shift.1);
+                let np = (y * wcur + x) as u32;
+                self.add_cell(np);
+                restored.push(np);
+            }
+            if rebuilt {
+                // perimeter was rebuilt for the remainder only; patch around B
+                self.fix_perimeter_around(&restored);
+            }
+            return false;
+        }
+        // accept: place the transformed branch
+        let mut placed: Vec<u32> = Vec::with_capacity(gb.len());
+        for &(bx, by) in &gb {
+            let p = ((ty + by) * wcur + (tx + bx)) as u32;
+            self.add_cell(p);
+            placed.push(p);
+        }
+        let rebuilt = shift != (0, 0);
+        if !rebuilt {
+            let old_sites: Vec<u32> = bpos.clone();
+            self.fix_perimeter_around(&old_sites);
+        }
+        self.fix_perimeter_around(&placed);
+        self.n_cp_accept += 1;
+        true
+    }
+
+    /// Repair the perimeter indexed set around the given positions: each
+    /// position and its neighbors get their membership recomputed from the
+    /// final occupancy.  Idempotent.
+    fn fix_perimeter_around(&mut self, sites: &[u32]) {
+        let w = self.w as i64;
+        for &s in sites {
+            let sp = s as i64;
+            for q in [sp, sp + 1, sp - 1, sp + w, sp - w] {
+                let qp = q as u32;
+                let should = !self.occ(qp) && self.has_occupied_neighbor(qp);
+                let is = self.per_idx[qp as usize] != 0;
+                if should && !is {
+                    self.per_add(qp);
+                } else if !should && is {
+                    self.per_remove(qp);
+                }
+            }
+        }
+    }
+
+    /// Mixed kernel: with probability 1/cp_inv try a cut-and-paste move,
+    /// else a single-cell move.  cp_inv = 0 disables cut-and-paste.
+    #[inline(always)]
+    fn step_mixed(&mut self, rng: &mut Rng, cp_inv: u64) -> bool {
+        if cp_inv > 0 && rng.below(cp_inv) == 0 {
+            self.cutpaste(rng)
+        } else {
+            self.step(rng)
+        }
+    }
+
+    /// Obviously-correct bridge reference: full BFS from u avoiding the
+    /// (u, v) edge; the edge is a bridge iff v is not reached.  Also returns
+    /// the v-side size when it is a bridge (n minus u-side size).
+    fn bridge_ref(&mut self, ui: usize, vi: usize) -> Option<usize> {
+        let n = self.cells.len();
+        if self.stamp >= u32::MAX - 1 {
+            self.visited.iter_mut().for_each(|v| *v = 0);
+            self.stamp = 0;
+        }
+        self.stamp += 1;
+        let stamp = self.stamp;
+        let upos = self.cells[ui];
+        self.queue.clear();
+        self.queue.push(upos);
+        self.visited[upos as usize] = stamp;
+        let vpos = self.cells[vi];
+        let w = self.w as i64;
+        let mut head = 0;
+        let mut cnt = 1usize;
+        while head < self.queue.len() {
+            let x = self.queue[head] as i64;
+            head += 1;
+            for d in [1, -1, w, -w] {
+                let y = (x + d) as u32;
+                if (x as u32 == upos && y == vpos) || (x as u32 == vpos && y == upos) {
+                    continue;
+                }
+                if self.occ(y) && self.visited[y as usize] != stamp {
+                    self.visited[y as usize] = stamp;
+                    cnt += 1;
+                    self.queue.push(y);
+                }
+            }
+        }
+        if self.visited[vpos as usize] == stamp {
+            None
+        } else {
+            Some(n - cnt)
+        }
+    }
+
     /// Obviously-correct connectivity reference: full BFS over A - {c}.
     /// Used by selftest to differential-test `removable`.
     fn removable_ref(&mut self, c: u32) -> bool {
@@ -573,7 +889,12 @@ impl State {
     }
 
     /// Recentre and resize the grid; recompute perimeter and sums.
-    fn rebuild(&mut self) {
+    /// Returns the (dx, dy) shift applied to every cell's (x, y).
+    fn rebuild(&mut self) -> (i64, i64) {
+        self.rebuild_extra(0)
+    }
+
+    fn rebuild_extra(&mut self, extra: usize) -> (i64, i64) {
         self.n_rebuild += 1;
         let w = self.w;
         let (mut minx, mut miny, mut maxx, mut maxy) = (usize::MAX, usize::MAX, 0, 0);
@@ -585,8 +906,8 @@ impl State {
             maxy = maxy.max(y);
         }
         let (bw, bh) = (maxx - minx + 1, maxy - miny + 1);
-        let mx = (bw / 4).max(16);
-        let my = (bh / 4).max(16);
+        let mx = (bw / 4).max(16) + extra;
+        let my = (bh / 4).max(16) + extra;
         let (nw, nh) = (bw + 2 * mx, bh + 2 * my);
         let old: Vec<u32> = std::mem::take(&mut self.cells);
         self.w = nw;
@@ -607,6 +928,7 @@ impl State {
             self.add_cell(((y - miny + my) * nw + (x - minx + mx)) as u32);
         }
         self.rebuild_perimeter();
+        (mx as i64 - minx as i64, my as i64 - miny as i64)
     }
 
     fn rg2(&self) -> f64 {
@@ -623,8 +945,9 @@ impl State {
             .collect()
     }
 
-    /// Translation-canonical packed form for n <= 8 (4 bits per coordinate).
-    fn canonical_u64(&self) -> u64 {
+    /// Translation-canonical packed form for n <= 16 (4 bits per coordinate,
+    /// one byte per cell, sorted, folded into a u128).
+    fn canonical_u128(&self) -> u128 {
         let cs = self.coords();
         let minx = cs.iter().map(|c| c.0).min().unwrap();
         let miny = cs.iter().map(|c| c.1).min().unwrap();
@@ -633,7 +956,7 @@ impl State {
             .map(|c| (((c.0 - minx) as u8) << 4) | ((c.1 - miny) as u8))
             .collect();
         bytes.sort_unstable();
-        bytes.iter().fold(0u64, |acc, &b| (acc << 8) | b as u64)
+        bytes.iter().fold(0u128, |acc, &b| (acc << 8) | b as u128)
     }
 
     /// Full from-scratch consistency check (differential test vs the
@@ -715,7 +1038,9 @@ impl State {
     }
 
     fn stats_line(&self) -> String {
-        let total = self.n_cut_reject + self.n_noop + self.n_moved;
+        let total = self.n_cut_reject + self.n_noop + self.n_moved
+            + self.n_cp_accept + self.n_cp_invalid + self.n_cp_notbridge
+            + self.n_cp_toobig + self.n_cp_nopair;
         format!(
             "steps={} moved={:.4} noop={:.4} cut_reject={:.4} leaf={:.4} ring={:.4} bfs={:.4} bfs_nodes_per_step={:.2} rebuilds={}",
             total,
@@ -727,6 +1052,10 @@ impl State {
             self.n_bfs as f64 / total as f64,
             self.n_bfs_nodes as f64 / total as f64,
             self.n_rebuild,
+        ) + &format!(
+            " cp[accept={} invalid={} notbridge={} toobig={} nopair={}]",
+            self.n_cp_accept, self.n_cp_invalid, self.n_cp_notbridge,
+            self.n_cp_toobig, self.n_cp_nopair,
         )
     }
 }
@@ -764,10 +1093,11 @@ fn main() {
     match mode.as_str() {
         "bench" => {
             let steps: u64 = get(&args, "steps", 10_000_000);
+            let cp_inv: u64 = get(&args, "cp-inv", 0);
             let mut st = State::new(n, &init);
             let t0 = std::time::Instant::now();
             for _ in 0..steps {
-                st.step(&mut rng);
+                st.step_mixed(&mut rng, cp_inv);
             }
             let dt = t0.elapsed().as_secs_f64();
             println!(
@@ -801,21 +1131,22 @@ fn main() {
         }
         "chi" => {
             // print "canonical_u64 count" lines for chi-square in Python
-            assert!(n <= 8, "canonical_u64 packing supports n <= 8");
+            assert!(n <= 16, "canonical_u128 packing supports n <= 16");
             let obs: u64 = get(&args, "obs", 1_000_000);
             let thin: u64 = get(&args, "thin", 10);
             let burn: u64 = get(&args, "burn", 100_000);
             let check_every: u64 = get(&args, "check-every", 0);
+            let cp_inv: u64 = get(&args, "cp-inv", 0);
             let mut st = State::new(n, &init);
             for _ in 0..burn {
-                st.step(&mut rng);
+                st.step_mixed(&mut rng, cp_inv);
             }
-            let mut counts: HashMap<u64, u64> = HashMap::new();
+            let mut counts: HashMap<u128, u64> = HashMap::new();
             for i in 0..obs {
                 for _ in 0..thin {
-                    st.step(&mut rng);
+                    st.step_mixed(&mut rng, cp_inv);
                 }
-                *counts.entry(st.canonical_u64()).or_insert(0) += 1;
+                *counts.entry(st.canonical_u128()).or_insert(0) += 1;
                 if check_every > 0 && i % check_every == 0 {
                     st.check_invariants(n);
                 }
@@ -833,6 +1164,7 @@ fn main() {
             let steps: u64 = get(&args, "steps", 1_000_000);
             let record_every: u64 = get(&args, "record-every", 10_000);
             let check_every: u64 = get(&args, "check-every", 0);
+            let cp_inv: u64 = get(&args, "cp-inv", 0);
             let out_path = args.get("out").cloned();
             let dump_path = args.get("dump-final").cloned();
             let dump_every: u64 = get(&args, "dump-every", 0);
@@ -854,7 +1186,7 @@ fn main() {
             while done < steps {
                 let chunk = record_every.min(steps - done);
                 for _ in 0..chunk {
-                    st.step(&mut rng);
+                    st.step_mixed(&mut rng, cp_inv);
                 }
                 done += chunk;
                 if let Some(w) = writer.as_mut() {
@@ -926,6 +1258,40 @@ fn main() {
                     }
                     st.check_invariants(nn);
                     println!("selftest n={nn} init={init} OK  {}", st.stats_line());
+                }
+                // mixed kernel (25% cut-and-paste) + bridge differential
+                for init in ["bar", "rect"] {
+                    let mut st = State::new(nn, init);
+                    let mut r = Rng::new(seed ^ (nn as u64) ^ 0xC0FFEE);
+                    for i in 0..steps / 2 {
+                        st.step_mixed(&mut r, 4);
+                        if i % every == 0 {
+                            st.check_invariants(nn);
+                            for _ in 0..nn.min(32) {
+                                let ui = r.below(nn as u64) as usize;
+                                let d0 = r.below(4) as usize;
+                                let vi = st.nbr[ui][d0];
+                                if vi == State::NONE {
+                                    continue;
+                                }
+                                let fast = st.bridge_component(ui, vi as usize);
+                                let refr = st.bridge_ref(ui, vi as usize);
+                                match refr {
+                                    None => assert!(fast.is_none(), "bridge false pos n={nn}"),
+                                    Some(bsz) => {
+                                        if 2 * bsz <= nn {
+                                            let f = fast.expect("bridge missed");
+                                            assert_eq!(f.len(), bsz, "bridge size n={nn}");
+                                        } else {
+                                            assert!(fast.is_none(), "toobig not rejected");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    st.check_invariants(nn);
+                    println!("selftest-mixed n={nn} init={init} OK  {}", st.stats_line());
                 }
             }
         }
