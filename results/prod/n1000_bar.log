@@ -1,0 +1,2 @@
+n=1000 init=bar seed=101 secs=817.7 moves_per_sec=2.446e5
+steps=200000000 moved=0.2945 noop=0.0002 cut_reject=0.7052 leaf=0.1705 ring=0.1088 bfs=0.7207 bfs_nodes_per_step=103.05 rebuilds=80
