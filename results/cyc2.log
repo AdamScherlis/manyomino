@@ -1,0 +1,10 @@
+
+thread 'main' (5166) panicked at src/main.rs:204:23:
+index out of bounds: the len is 8053 but the index is 8060
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic_bounds_check
+   3: manyomino::main::{{closure}}
+   4: manyomino::main
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.

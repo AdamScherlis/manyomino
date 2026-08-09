@@ -113,6 +113,9 @@ struct State {
     n_cp_toobig: u64,
     n_cp_invalid: u64,
     n_cp_accept: u64,
+    /// cumulative coordinate shift from grid rebuilds (for external watchers)
+    shift_x: i64,
+    shift_y: i64,
 }
 
 impl State {
@@ -186,6 +189,8 @@ impl State {
             n_cp_toobig: 0,
             n_cp_invalid: 0,
             n_cp_accept: 0,
+            shift_x: 0,
+            shift_y: 0,
         };
         for (x, y) in pts {
             st.add_cell(((y + my) * w + x + mx) as u32);
@@ -847,12 +852,19 @@ impl State {
     /// One step of the chain.  Returns true iff the state changed.
     #[inline(always)]
     fn step(&mut self, rng: &mut Rng) -> bool {
+        self.step_traced(rng).is_some()
+    }
+
+    /// One step; returns Some((c_pos, s_pos)) iff the state changed (both in
+    /// the CURRENT grid frame, i.e. after any rebuild this step triggered).
+    #[inline(always)]
+    fn step_traced(&mut self, rng: &mut Rng) -> Option<(u32, u32)> {
         let n = self.cells.len();
         let ci = rng.below(n as u64) as usize;
         let c = self.cells[ci];
         if !self.removable(ci) {
             self.n_cut_reject += 1;
-            return false;
+            return None;
         }
         let w = self.w as i64;
         // remove c; perimeter becomes that of A - {c}: c itself is now a
@@ -876,15 +888,20 @@ impl State {
             }
         }
         let (x, y) = (s as usize % self.w, s as usize / self.w);
+        let mut cxy = ((c as usize % self.w) as i64, (c as usize / self.w) as i64);
+        let mut sxy = (x as i64, y as i64);
         if x < 2 || x >= self.w - 2 || y < 2 || y >= self.h - 2 {
-            self.rebuild();
+            let sh = self.rebuild();
+            cxy = (cxy.0 + sh.0, cxy.1 + sh.1);
+            sxy = (sxy.0 + sh.0, sxy.1 + sh.1);
         }
+        let w = self.w as i64;
         if s != c {
             self.n_moved += 1;
-            true
+            Some(((cxy.1 * w + cxy.0) as u32, (sxy.1 * w + sxy.0) as u32))
         } else {
             self.n_noop += 1;
-            false
+            None
         }
     }
 
@@ -928,7 +945,10 @@ impl State {
             self.add_cell(((y - miny + my) * nw + (x - minx + mx)) as u32);
         }
         self.rebuild_perimeter();
-        (mx as i64 - minx as i64, my as i64 - miny as i64)
+        let sh = (mx as i64 - minx as i64, my as i64 - miny as i64);
+        self.shift_x += sh.0;
+        self.shift_y += sh.1;
+        sh
     }
 
     fn rg2(&self) -> f64 {
@@ -1228,6 +1248,196 @@ fn main() {
                 steps as f64 / dt
             );
             eprintln!("{}", st.stats_line());
+        }
+        "cyclewatch" => {
+            // Run the pure single-cell chain from an equilibrated snapshot
+            // until an accepted move closes a cycle enclosing a bounded empty
+            // region of >= --threshold cells; dump the post-move state and
+            // the move.  Keep running until the enclosure dies (ring breach
+            // or filled); dump that transition too.  Python then verifies
+            // detailed balance for both transitions from scratch.
+            let file = args.get("init-file").expect("--init-file");
+            let threshold: usize = get(&args, "threshold", 100);
+            let max_steps: u64 = get(&args, "max-steps", 4_000_000_000);
+            let prefix = args.get("out-prefix").expect("--out-prefix").clone();
+            let mut st = State::from_file(file);
+            let n = st.cells.len();
+            st.check_invariants(n);
+            let cap = 20_000usize;
+
+            // bounded flood over empty cells from `start`; None if the region
+            // exceeds `cap` (i.e. it is the outside, not a hole)
+            let flood = |st: &State, start: u32| -> Option<Vec<u32>> {
+                if st.occ(start) {
+                    return Some(Vec::new());
+                }
+                let w = st.w as i64;
+                let mut reg: Vec<u32> = vec![start];
+                let mut seen = std::collections::HashSet::new();
+                seen.insert(start);
+                let mut head = 0;
+                while head < reg.len() {
+                    let u = reg[head] as i64;
+                    head += 1;
+                    for d in [1, -1, w, -w] {
+                        let v = (u + d) as u32;
+                        if !st.occ(v) && seen.insert(v) {
+                            reg.push(v);
+                            if reg.len() > cap {
+                                return None;
+                            }
+                        }
+                    }
+                }
+                Some(reg)
+            };
+            let dump = |st: &State, path: &str| {
+                let f = std::fs::File::create(path).expect("create dump");
+                let mut w = std::io::BufWriter::new(f);
+                for (x, y) in st.coords() {
+                    writeln!(w, "{x} {y}").unwrap();
+                }
+                w.flush().unwrap();
+            };
+            let xy = |st: &State, p: u32| ((p as usize % st.w) as i64, (p as usize / st.w) as i64);
+
+            // phase 1: wait for a big-cycle birth
+            let mut hole: Vec<u32> = Vec::new();
+            let mut birth_step = 0u64;
+            let mut t = 0u64;
+            'search: while t < max_steps {
+                t += 1;
+                let Some((c, s)) = st.step_traced(&mut rng) else {
+                    continue;
+                };
+                // gap fill? s has >= 2 occupied neighbors
+                let w = st.w as i64;
+                let mut occn = 0;
+                for d in [1, -1, w, -w] {
+                    if st.occ((s as i64 + d) as u32) {
+                        occn += 1;
+                    }
+                }
+                if occn < 2 {
+                    continue;
+                }
+                for d in [1, -1, w, -w] {
+                    let e = (s as i64 + d) as u32;
+                    if st.occ(e) {
+                        continue;
+                    }
+                    if let Some(reg) = flood(&st, e) {
+                        // genuine cycle birth only: the region must have been
+                        // OPEN before this move, i.e. flooding with s treated
+                        // as empty (and c occupied) must escape the cap
+                        let open_before = {
+                            let mut reg2: Vec<u32> = vec![e];
+                            let mut seen = std::collections::HashSet::new();
+                            seen.insert(e);
+                            let mut head = 0;
+                            let mut escaped = false;
+                            while head < reg2.len() {
+                                let u = reg2[head] as i64;
+                                head += 1;
+                                for dd in [1, -1, w, -w] {
+                                    let v = (u + dd) as u32;
+                                    let empty_before =
+                                        (v == s || !st.occ(v)) && v != c;
+                                    if empty_before && seen.insert(v) {
+                                        reg2.push(v);
+                                        if reg2.len() > cap {
+                                            escaped = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if escaped {
+                                    break;
+                                }
+                            }
+                            escaped
+                        };
+                        if open_before && reg.len() >= threshold {
+                            let (cx, cy) = xy(&st, c);
+                            let (sx2, sy2) = xy(&st, s);
+                            dump(&st, &format!("{prefix}_birth_after.txt"));
+                            let mut mf = std::fs::File::create(format!("{prefix}_birth_meta.txt")).unwrap();
+                            writeln!(mf, "step {t}\nc {cx} {cy}\ns {sx2} {sy2}\narea {}", reg.len()).unwrap();
+                            eprintln!("birth at step {t}: hole area {} (c=({cx},{cy}) -> s=({sx2},{sy2}))", reg.len());
+                            hole = reg;
+                            birth_step = t;
+                            break 'search;
+                        }
+                    }
+                }
+            }
+            assert!(!hole.is_empty(), "no big cycle within max-steps");
+
+            // phase 2: watch until the enclosure dies.  Track the hole as
+            // (x, y) pairs so grid rebuilds (which shift all coordinates by a
+            // known delta) are easy to follow.
+            let mut hole_xy: Vec<(i64, i64)> = {
+                let w = st.w as i64;
+                hole.iter().map(|&p| (p as i64 % w, p as i64 / w)).collect()
+            };
+            let mut shift0 = (st.shift_x, st.shift_y);
+            loop {
+                t += 1;
+                let Some((c, s)) = st.step_traced(&mut rng) else {
+                    continue;
+                };
+                if (st.shift_x, st.shift_y) != shift0 {
+                    let (dx, dy) = (st.shift_x - shift0.0, st.shift_y - shift0.1);
+                    for p in hole_xy.iter_mut() {
+                        p.0 += dx;
+                        p.1 += dy;
+                    }
+                    shift0 = (st.shift_x, st.shift_y);
+                    eprintln!("rebuild during watch at step {t}; hole translated by ({dx},{dy})");
+                }
+                let w = st.w as i64;
+                // refresh the hole from any still-empty member
+                let seed = hole_xy
+                    .iter()
+                    .map(|&(x, y)| (y * w + x) as u32)
+                    .find(|&p| !st.occ(p));
+                let Some(seed) = seed else {
+                    let (cx, cy) = xy(&st, c);
+                    let (sx2, sy2) = xy(&st, s);
+                    dump(&st, &format!("{prefix}_death_after.txt"));
+                    let mut mf =
+                        std::fs::File::create(format!("{prefix}_death_meta.txt")).unwrap();
+                    writeln!(mf, "step {t}\nc {cx} {cy}\ns {sx2} {sy2}\ncause filled").unwrap();
+                    eprintln!(
+                        "death (filled) at step {t} after {} steps of life",
+                        t - birth_step
+                    );
+                    break;
+                };
+                match flood(&st, seed) {
+                    Some(reg) => {
+                        hole_xy = reg
+                            .iter()
+                            .map(|&p| (p as i64 % w, p as i64 / w))
+                            .collect();
+                    }
+                    None => {
+                        let (cx, cy) = xy(&st, c);
+                        let (sx2, sy2) = xy(&st, s);
+                        dump(&st, &format!("{prefix}_death_after.txt"));
+                        let mut mf =
+                            std::fs::File::create(format!("{prefix}_death_meta.txt")).unwrap();
+                        writeln!(mf, "step {t}\nc {cx} {cy}\ns {sx2} {sy2}\ncause breach").unwrap();
+                        eprintln!(
+                            "death (breach) at step {t} after {} steps of life",
+                            t - birth_step
+                        );
+                        break;
+                    }
+                }
+            }
+            st.check_invariants(n);
+            eprintln!("done; {}", st.stats_line());
         }
         "probe" => {
             // Execute one specific single-cell transition on a loaded shape,
