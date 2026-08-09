@@ -86,8 +86,6 @@ struct State {
     per_idx: Vec<u32>,
     cells: Vec<u32>,
     per: Vec<u32>,
-    visited: Vec<u32>,
-    stamp: u32,
     /// 4 neighbor cell-indices per cell (NONE = empty side), kept in sync
     /// with the cell set; lets the BFS run over a compact index space
     nbr: Vec<[u32; 4]>,
@@ -175,8 +173,6 @@ impl State {
             per_idx: vec![0; w * h],
             cells: Vec::with_capacity(n),
             per: Vec::new(),
-            visited: vec![0; w * h],
-            stamp: 0,
             nbr: Vec::with_capacity(n),
             fb: vec![vec![0; (n + 63) / 64]; 4],
             queue: Vec::new(),
@@ -790,16 +786,18 @@ impl State {
     /// the v-side size when it is a bridge (n minus u-side size).
     fn bridge_ref(&mut self, ui: usize, vi: usize) -> Option<usize> {
         let n = self.cells.len();
-        if self.stamp >= u32::MAX - 1 {
-            self.visited.iter_mut().for_each(|v| *v = 0);
-            self.stamp = 0;
-        }
-        self.stamp += 1;
-        let stamp = self.stamp;
+        let mut vis = vec![0u64; (self.w * self.h + 63) / 64];
+        let mark = |vis: &mut Vec<u64>, p: u32| {
+            let (wi, bi) = ((p >> 6) as usize, p & 63);
+            let old = vis[wi] >> bi & 1;
+            vis[wi] |= 1 << bi;
+            old == 0
+        };
+        let seen = |vis: &Vec<u64>, p: u32| vis[(p >> 6) as usize] >> (p & 63) & 1 != 0;
         let upos = self.cells[ui];
         self.queue.clear();
         self.queue.push(upos);
-        self.visited[upos as usize] = stamp;
+        mark(&mut vis, upos);
         let vpos = self.cells[vi];
         let w = self.w as i64;
         let mut head = 0;
@@ -812,14 +810,13 @@ impl State {
                 if (x as u32 == upos && y == vpos) || (x as u32 == vpos && y == upos) {
                     continue;
                 }
-                if self.occ(y) && self.visited[y as usize] != stamp {
-                    self.visited[y as usize] = stamp;
+                if self.occ(y) && mark(&mut vis, y) {
                     cnt += 1;
                     self.queue.push(y);
                 }
             }
         }
-        if self.visited[vpos as usize] == stamp {
+        if seen(&vis, vpos) {
             None
         } else {
             Some(n - cnt)
@@ -830,17 +827,18 @@ impl State {
     /// Used by selftest to differential-test `removable`.
     fn removable_ref(&mut self, c: u32) -> bool {
         let n = self.cells.len();
-        if self.stamp >= u32::MAX - 1 {
-            self.visited.iter_mut().for_each(|v| *v = 0);
-            self.stamp = 0;
-        }
-        self.stamp += 1;
-        let stamp = self.stamp;
+        let mut vis = vec![0u64; (self.w * self.h + 63) / 64];
+        let mark = |vis: &mut Vec<u64>, p: u32| {
+            let (wi, bi) = ((p >> 6) as usize, p & 63);
+            let old = vis[wi] >> bi & 1;
+            vis[wi] |= 1 << bi;
+            old == 0
+        };
         let w = self.w as i64;
         let start = if self.cells[0] == c { self.cells[1] } else { self.cells[0] };
         self.queue.clear();
         self.queue.push(start);
-        self.visited[start as usize] = stamp;
+        mark(&mut vis, start);
         let mut head = 0;
         let mut cnt = 1;
         while head < self.queue.len() {
@@ -848,8 +846,7 @@ impl State {
             head += 1;
             for d in [1, -1, w, -w] {
                 let v = (u + d) as u32;
-                if v != c && self.occ(v) && self.visited[v as usize] != stamp {
-                    self.visited[v as usize] = stamp;
+                if v != c && self.occ(v) && mark(&mut vis, v) {
                     cnt += 1;
                     self.queue.push(v);
                 }
@@ -941,9 +938,7 @@ impl State {
         self.occ_bits = vec![0; (nw * nh + 63) / 64];
         self.cell_idx = vec![0; nw * nh];
         self.per_idx = vec![0; nw * nh];
-        self.visited = vec![0; nw * nh];
         self.nbr.clear();
-        self.stamp = 0;
         self.per.clear();
         self.sx = 0;
         self.sy = 0;
@@ -996,17 +991,19 @@ impl State {
         for (i, &p) in self.cells.iter().enumerate() {
             assert_eq!(self.cell_idx[p as usize], i as u32 + 1, "cell_idx");
         }
-        // connectivity: BFS over all cells
-        if self.stamp >= u32::MAX - 1 {
-            self.visited.iter_mut().for_each(|v| *v = 0);
-            self.stamp = 0;
-        }
-        self.stamp += 1;
-        let stamp = self.stamp;
+        // connectivity: BFS over all cells (local bitmap visited)
+        let words = (self.w * self.h + 63) / 64;
+        let mut vis = vec![0u64; words];
+        let mark = |vis: &mut Vec<u64>, p: u32| {
+            let (wi, bi) = ((p >> 6) as usize, p & 63);
+            let old = vis[wi] >> bi & 1;
+            vis[wi] |= 1 << bi;
+            old == 0
+        };
         let w = self.w as i64;
         self.queue.clear();
         self.queue.push(self.cells[0]);
-        self.visited[self.cells[0] as usize] = stamp;
+        mark(&mut vis, self.cells[0]);
         let mut head = 0;
         let mut cnt = 1;
         while head < self.queue.len() {
@@ -1014,8 +1011,7 @@ impl State {
             head += 1;
             for d in [1, -1, w, -w] {
                 let v = (u + d) as u32;
-                if self.occ(v) && self.visited[v as usize] != stamp {
-                    self.visited[v as usize] = stamp;
+                if self.occ(v) && mark(&mut vis, v) {
                     cnt += 1;
                     self.queue.push(v);
                 }
@@ -1024,14 +1020,12 @@ impl State {
         assert_eq!(cnt, n, "connectivity");
         // perimeter set == from-scratch recompute
         let mut fresh: Vec<u32> = Vec::new();
-        self.stamp += 1;
-        let stamp = self.stamp;
+        let mut vis2 = vec![0u64; words];
         for i in 0..self.cells.len() {
             let c = self.cells[i] as i64;
             for d in [1, -1, w, -w] {
                 let q = (c + d) as u32;
-                if !self.occ(q) && self.visited[q as usize] != stamp {
-                    self.visited[q as usize] = stamp;
+                if !self.occ(q) && mark(&mut vis2, q) {
                     fresh.push(q);
                 }
             }
@@ -1848,7 +1842,10 @@ fn main() {
                 println!("lambda_hat (a_n/a_(n-1)): {:.4}", lam);
             }
             let (rg2, se) = pm.rg2_mean_stderr();
-            println!("<Rg^2>_{n} = {:.4} +- {:.4}", rg2, se);
+            println!(
+                "<Rg^2>_{n} = {:.4} +- {:.4}   weight_ESS = {:.1} (of {} samples)",
+                rg2, se, pm.weight_ess(), pm.samples
+            );
         }
         "selftest" => {
             // heavy invariant checking at several sizes

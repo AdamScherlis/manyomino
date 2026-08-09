@@ -81,6 +81,9 @@ pub struct Perm {
     pub nbatch: usize,
     pub batch_w: Vec<LogSum>,
     pub batch_wr: Vec<LogSum>,
+    /// sum of W and of W^2 at target size, for the weight-ESS diagnostic
+    pub w1: LogSum,
+    pub w2: LogSum,
     cur_batch: usize,
     rng: Rng,
 }
@@ -109,6 +112,8 @@ impl Perm {
             nbatch,
             batch_w: vec![LogSum::new(); nbatch],
             batch_wr: vec![LogSum::new(); nbatch],
+            w1: LogSum::new(),
+            w2: LogSum::new(),
             cur_batch: 0,
             rng: Rng::new(seed),
         }
@@ -169,6 +174,8 @@ impl Perm {
         let r = self.rg2();
         self.batch_w[self.cur_batch].add(lw);
         self.batch_wr[self.cur_batch].add_weighted(lw, r);
+        self.w1.add(lw);
+        self.w2.add(2.0 * lw);
     }
 
     /// thresholds in log space for size k; None = no control yet
@@ -238,6 +245,11 @@ impl Perm {
     /// log of the estimated number of FIXED animals of size k
     pub fn log_ak(&self, k: usize) -> f64 {
         self.zk[k].log_total() - (self.tours as f64).ln() - (k as f64).ln()
+    }
+
+    /// effective number of independent weights: (sum W)^2 / sum W^2
+    pub fn weight_ess(&self) -> f64 {
+        (2.0 * self.w1.log_total() - self.w2.log_total()).exp()
     }
 
     /// weighted <Rg^2> at size n with a batch-means stderr
