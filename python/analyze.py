@@ -17,9 +17,13 @@ def load(path):
     with open(path) as f:
         next(f)
         for line in f:
-            s, v = line.split(",")
-            steps.append(int(s))
-            vals.append(float(v))
+            # the file may be mid-write; skip incomplete trailing lines
+            try:
+                s, v = line.rstrip("\n").split(",")
+                steps.append(int(s))
+                vals.append(float(v))
+            except ValueError:
+                continue
     return steps, vals
 
 
