@@ -142,6 +142,15 @@ impl State {
                 let w0 = n.div_ceil(2);
                 (0..n).map(|i| (i % w0, i / w0)).collect()
             }
+            // width-8 bar: Rg well above equilibrium at large n, and thick
+            // enough that random nicks never sever it, so cut tests stay
+            // local while it crumples (bar2 develops O(n)-cost cut cells
+            // as soon as opposing nicks appear)
+            "bar8" => {
+                let rows = 8.min(n);
+                let w0 = n.div_ceil(rows);
+                (0..n).map(|i| (i % w0, i / w0)).collect()
+            }
             _ => panic!("unknown init {init}"),
         };
         Self::from_points(pts)
@@ -1896,7 +1905,7 @@ fn main() {
                                        (5, 200_000, 100), (10, 200_000, 200),
                                        (37, 100_000, 500), (100, 100_000, 1000),
                                        (1000, 50_000, 5000)] {
-                for init in ["bar", "rect", "bar2"] {
+                for init in ["bar", "rect", "bar2", "bar8"] {
                     let mut st = State::new(nn, init);
                     let mut r = Rng::new(seed ^ nn as u64);
                     for i in 0..steps {
