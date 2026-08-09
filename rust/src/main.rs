@@ -1249,6 +1249,95 @@ fn main() {
             );
             eprintln!("{}", st.stats_line());
         }
+        "dbtest2" => {
+            // End-to-end empirical measurement of the one-step transition
+            // probability P(A -> A') for a specific pair, using the real
+            // step semantics: each trial draws the uniform cell index; only
+            // when it hits c* can the step reach A', in which case the full
+            // production path (connectivity check, removal, incremental
+            // perimeter, uniform site draw) runs and the destination is
+            // compared against s*.  Reports hits / trials.
+            let file = args.get("init-file").expect("--init-file");
+            let trials: u64 = get(&args, "trials", 1_200_000_000_000);
+            let parse_xy = |s: &str| -> (i64, i64) {
+                let mut it = s.split(',');
+                (
+                    it.next().unwrap().trim().parse().unwrap(),
+                    it.next().unwrap().trim().parse().unwrap(),
+                )
+            };
+            let (cx, cy) = parse_xy(args.get("c").expect("--c"));
+            let (sx, sy) = parse_xy(args.get("s").expect("--s"));
+            let text = std::fs::read_to_string(file).expect("read init file");
+            let mut pts: Vec<(i64, i64)> = Vec::new();
+            for line in text.lines() {
+                let mut it = line.split_whitespace();
+                pts.push((
+                    it.next().unwrap().parse().unwrap(),
+                    it.next().unwrap().parse().unwrap(),
+                ));
+            }
+            let minx = pts.iter().map(|p| p.0).min().unwrap();
+            let miny = pts.iter().map(|p| p.1).min().unwrap();
+            let mut st = State::from_file(file);
+            let n = st.cells.len();
+            st.check_invariants(n);
+            let first = st.cells[0] as i64;
+            let w = st.w as i64;
+            let (fx, fy) = (first % w, first / w);
+            let (offx, offy) = (fx - (pts[0].0 - minx), fy - (pts[0].1 - miny));
+            let cpos = ((cy - miny + offy) * w + (cx - minx + offx)) as u32;
+            let spos = ((sy - miny + offy) * w + (sx - minx + offx)) as u32;
+            assert!(st.occ(cpos) && !st.occ(spos), "move endpoints inconsistent");
+            let mut hits = 0u64;
+            let mut cell_hits = 0u64;
+            let nn = n as u64;
+            for t in 0..trials {
+                let ci = rng.below(nn) as usize;
+                // a step that picks any other cell cannot produce A'
+                if st.cells[ci] != cpos {
+                    continue;
+                }
+                cell_hits += 1;
+                // full production path from here
+                assert!(st.removable(ci), "c* must be removable");
+                st.remove_cell(ci, cpos);
+                st.per_add(cpos);
+                for d in [1, -1, w, -w] {
+                    let q = (cpos as i64 + d) as u32;
+                    if !st.occ(q) && st.per_idx[q as usize] != 0 && !st.has_occupied_neighbor(q)
+                    {
+                        st.per_remove(q);
+                    }
+                }
+                let s = st.per[rng.below(st.per.len() as u64) as usize];
+                if s == spos {
+                    hits += 1;
+                }
+                // restore A via the production placement path (put c* back)
+                st.per_remove(cpos);
+                st.add_cell(cpos);
+                for d in [1, -1, w, -w] {
+                    let q = (cpos as i64 + d) as u32;
+                    if !st.occ(q) && st.per_idx[q as usize] == 0 {
+                        st.per_add(q);
+                    }
+                }
+                if cell_hits % 10_000_000 == 0 {
+                    st.check_invariants(n);
+                }
+                let _ = t;
+            }
+            st.check_invariants(n);
+            println!(
+                "trials={} cell_hits={} (expect ~{}) transition_hits={} P_hat={:.6e}",
+                trials,
+                cell_hits,
+                trials / nn,
+                hits,
+                hits as f64 / trials as f64
+            );
+        }
         "dbtest" => {
             // Audit the sampler implementation on a specific state/transition:
             //  A. exhaustive removability: production removable() vs full-BFS
