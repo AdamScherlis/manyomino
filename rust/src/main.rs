@@ -1249,6 +1249,192 @@ fn main() {
             );
             eprintln!("{}", st.stats_line());
         }
+        "dbtest" => {
+            // Audit the sampler implementation on a specific state/transition:
+            //  A. exhaustive removability: production removable() vs full-BFS
+            //     reference for EVERY cell (exact, no sampling);
+            //  B. after the production removal path for --c, the incremental
+            //     perimeter equals the from-scratch perimeter of A - c as a
+            //     set (each site exactly once) and contains --s;
+            //  C. cell-pick: M raw draws through rng.below(n) over the cells
+            //     array (chi-square emitted for Python);
+            //  D. M forced-move trials: production removal + uniform site
+            //     draw + production placement, then production-primitive
+            //     undo; destination counts per site emitted for Python.
+            let file = args.get("init-file").expect("--init-file");
+            let trials: u64 = get(&args, "trials", 6_000_000);
+            let draws: u64 = get(&args, "draws", 100_000_000);
+            let out = args.get("out").expect("--out").clone();
+            let parse_xy = |s: &str| -> (i64, i64) {
+                let mut it = s.split(',');
+                (
+                    it.next().unwrap().trim().parse().unwrap(),
+                    it.next().unwrap().trim().parse().unwrap(),
+                )
+            };
+            let (cx, cy) = parse_xy(args.get("c").expect("--c"));
+            let (sx, sy) = parse_xy(args.get("s").expect("--s"));
+            let text = std::fs::read_to_string(file).expect("read init file");
+            let mut pts: Vec<(i64, i64)> = Vec::new();
+            for line in text.lines() {
+                let mut it = line.split_whitespace();
+                pts.push((
+                    it.next().unwrap().parse().unwrap(),
+                    it.next().unwrap().parse().unwrap(),
+                ));
+            }
+            let minx = pts.iter().map(|p| p.0).min().unwrap();
+            let miny = pts.iter().map(|p| p.1).min().unwrap();
+            let mut st = State::from_file(file);
+            let n = st.cells.len();
+            st.check_invariants(n);
+            let first = st.cells[0] as i64;
+            let w = st.w as i64;
+            let (fx, fy) = (first % w, first / w);
+            let (offx, offy) = (fx - (pts[0].0 - minx), fy - (pts[0].1 - miny));
+            let cpos = ((cy - miny + offy) * w + (cx - minx + offx)) as u32;
+            let spos = ((sy - miny + offy) * w + (sx - minx + offx)) as u32;
+            assert!(st.occ(cpos) && !st.occ(spos), "move endpoints inconsistent");
+
+            // ---- A. exhaustive removability boundary
+            let mut n_removable = 0u64;
+            let mut mismatches = 0u64;
+            for ci in 0..n {
+                let fast = st.removable(ci);
+                let refr = st.removable_ref(st.cells[ci]);
+                if fast != refr {
+                    mismatches += 1;
+                }
+                if refr {
+                    n_removable += 1;
+                }
+            }
+            println!(
+                "A: exhaustive removability over {n} cells: {} removable, {} mismatches",
+                n_removable, mismatches
+            );
+            assert_eq!(mismatches, 0);
+
+            // ---- B. perimeter set equality after production removal of c
+            let ci = st.cell_idx[cpos as usize] as usize - 1;
+            assert!(st.removable(ci), "--c not removable");
+            st.remove_cell(ci, cpos);
+            st.per_add(cpos);
+            for d in [1, -1, w, -w] {
+                let q = (cpos as i64 + d) as u32;
+                if !st.occ(q) && st.per_idx[q as usize] != 0 && !st.has_occupied_neighbor(q) {
+                    st.per_remove(q);
+                }
+            }
+            // from-scratch perimeter of A - c
+            let mut fresh: std::collections::HashSet<u32> = std::collections::HashSet::new();
+            for &p in &st.cells {
+                for d in [1, -1, w, -w] {
+                    let q = (p as i64 + d) as u32;
+                    if !st.occ(q) {
+                        fresh.insert(q);
+                    }
+                }
+            }
+            let mut per_set: std::collections::HashSet<u32> = std::collections::HashSet::new();
+            for &p in &st.per {
+                assert!(per_set.insert(p), "duplicate perimeter entry");
+            }
+            assert_eq!(per_set, fresh, "incremental perimeter != from-scratch");
+            assert!(per_set.contains(&spos), "--s not in perimeter of A - c");
+            let plen = st.per.len();
+            println!(
+                "B: incremental perimeter of A-c == from-scratch ({} sites, each exactly once; s present)",
+                plen
+            );
+            // restore c via the production placement path
+            let ci_restore = st.per_idx[cpos as usize];
+            assert!(ci_restore != 0);
+            st.per_remove(cpos);
+            st.add_cell(cpos);
+            for d in [1, -1, w, -w] {
+                let q = (cpos as i64 + d) as u32;
+                if !st.occ(q) && st.per_idx[q as usize] == 0 {
+                    st.per_add(q);
+                }
+            }
+            st.check_invariants(n);
+
+            // ---- C. raw cell-pick distribution
+            let mut cell_hist = vec![0u64; n];
+            for _ in 0..draws {
+                cell_hist[rng.below(n as u64) as usize] += 1;
+            }
+            let e = draws as f64 / n as f64;
+            let chi2: f64 = cell_hist
+                .iter()
+                .map(|&o| (o as f64 - e) * (o as f64 - e) / e)
+                .sum();
+            println!("C: cell-pick draws={} chi2={:.1} dof={}", draws, chi2, n - 1);
+
+            // ---- D. forced-move destination distribution
+            let mut counts: HashMap<u32, u64> = HashMap::new();
+            let ci0 = st.cell_idx[cpos as usize] as usize - 1;
+            let _ = ci0;
+            for t in 0..trials {
+                let ci = st.cell_idx[cpos as usize] as usize - 1;
+                st.remove_cell(ci, cpos);
+                st.per_add(cpos);
+                for d in [1, -1, w, -w] {
+                    let q = (cpos as i64 + d) as u32;
+                    if !st.occ(q) && st.per_idx[q as usize] != 0 && !st.has_occupied_neighbor(q)
+                    {
+                        st.per_remove(q);
+                    }
+                }
+                let s = st.per[rng.below(st.per.len() as u64) as usize];
+                *counts.entry(s).or_insert(0) += 1;
+                st.per_remove(s);
+                st.add_cell(s);
+                for d in [1, -1, w, -w] {
+                    let q = (s as i64 + d) as u32;
+                    if !st.occ(q) && st.per_idx[q as usize] == 0 {
+                        st.per_add(q);
+                    }
+                }
+                // undo with the same production primitives (move s -> c)
+                if s != cpos {
+                    let si = st.cell_idx[s as usize] as usize - 1;
+                    st.remove_cell(si, s);
+                    st.per_add(s);
+                    for d in [1, -1, w, -w] {
+                        let q = (s as i64 + d) as u32;
+                        if !st.occ(q)
+                            && st.per_idx[q as usize] != 0
+                            && !st.has_occupied_neighbor(q)
+                        {
+                            st.per_remove(q);
+                        }
+                    }
+                    st.per_remove(cpos);
+                    st.add_cell(cpos);
+                    for d in [1, -1, w, -w] {
+                        let q = (cpos as i64 + d) as u32;
+                        if !st.occ(q) && st.per_idx[q as usize] == 0 {
+                            st.per_add(q);
+                        }
+                    }
+                }
+                if t % 1_000_000 == 0 {
+                    st.check_invariants(n);
+                }
+            }
+            st.check_invariants(n);
+            let f = std::fs::File::create(&out).expect("create out");
+            let mut wtr = std::io::BufWriter::new(f);
+            writeln!(wtr, "# n {n} plen {plen} trials {trials}").unwrap();
+            for (&p, &cnt) in &counts {
+                let (x, y) = ((p as i64 % w) - offx + minx, (p as i64 / w) - offy + miny);
+                writeln!(wtr, "{x} {y} {cnt}").unwrap();
+            }
+            wtr.flush().unwrap();
+            println!("D: {} forced-move trials over {} sites written to {}", trials, counts.len(), out);
+        }
         "cyclewatch" => {
             // Run the pure single-cell chain from an equilibrated snapshot
             // until an accepted move closes a cycle enclosing a bounded empty
