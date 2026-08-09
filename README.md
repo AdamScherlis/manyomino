@@ -91,6 +91,8 @@ proposal is accepted.
 | two-seed convergence, n=1000 / 2000 / 3000 / 10000 | \|z\| = 0.06 / 0.49 / 0.09 / 0.67, all PASS |
 | two-seed, n=5000, four independent chains pooled by init | \|z\| = 1.87, PASS |
 | leaf-to-gap probe: largest almost-cycle (156/108 cells) in n=10⁴ snapshots | legal, probability (1/n)(1/\|P\|), invariants pass |
+| detailed balance on captured cycle-seal/breach transitions (n=10⁴) | exact: \|P\| identical both ways; implementation audit: removability boundary exhaustive 0 mismatches, perimeter set == from-scratch, destination uniform (p=0.11–0.83) |
+| end-to-end P(A→A′) vs P(A′→A), 1.2×10¹² unmodified-step trials each | seal: 10099 vs 10047 hits (z=+0.4); breach: 9840 vs 10118 (z=−2.0); all four consistent with exact 1/(n\|P\|) |
 | ν fit, n = 100..10000 | 0.6439 ± 0.0015 (expect ≈ 0.6408) |
 
 Measured autocorrelation time, single-cell kernel: τ ≈ 0.3 · n^2.2 moves.
