@@ -1,0 +1,13 @@
+perm n=100 p=0.59 tours=2000000 samples_at_n=786767 secs=9.4
+a_1 estimate: 1.0000e0
+a_2 estimate: 1.9987e0
+a_3 estimate: 6.0001e0
+a_4 estimate: 1.8961e1
+a_5 estimate: 6.2850e1
+a_6 estimate: 2.1586e2
+a_7 estimate: 7.6118e2
+a_8 estimate: 2.7337e3
+a_9 estimate: 9.9378e3
+a_10 estimate: 3.6497e4
+lambda_hat (a_n/a_(n-1)): 4.1099
+<Rg^2>_100 = 67.4897 +- 0.5546

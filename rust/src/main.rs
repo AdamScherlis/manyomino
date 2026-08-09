@@ -8,18 +8,20 @@
 //! of A-{c} (c itself included, so s=c is legal) and move c -> s.  The kernel
 //! is symmetric, so uniform over fixed-n polyominoes is stationary.
 
+mod perm;
+
 use std::collections::HashMap;
 use std::io::Write;
 
 // ---------------------------------------------------------------- RNG
 
 /// xoshiro256++, seeded via splitmix64.
-struct Rng {
+pub struct Rng {
     s: [u64; 4],
 }
 
 impl Rng {
-    fn new(seed: u64) -> Self {
+    pub fn new(seed: u64) -> Self {
         let mut x = seed;
         let mut next = || {
             x = x.wrapping_add(0x9E3779B97F4A7C15);
@@ -34,7 +36,7 @@ impl Rng {
     }
 
     #[inline(always)]
-    fn next_u64(&mut self) -> u64 {
+    pub fn next_u64(&mut self) -> u64 {
         let r = self.s[0]
             .wrapping_add(self.s[3])
             .rotate_left(23)
@@ -1819,6 +1821,34 @@ fn main() {
                 per_len,
                 1.0 / (n as f64) / (per_len as f64)
             );
+        }
+        "perm" => {
+            // Independent PERM sampler: estimates a_k (animal counts) and
+            // the weighted <Rg^2> at the target size.
+            let tours: u64 = get(&args, "tours", 1_000_000);
+            let p: f64 = get(&args, "p", 0.59);
+            let mut pm = perm::Perm::new(n, p, seed, 16);
+            let t0 = std::time::Instant::now();
+            for _ in 0..tours {
+                pm.tour(tours);
+            }
+            let dt = t0.elapsed().as_secs_f64();
+            println!(
+                "perm n={} p={} tours={} samples_at_n={} secs={:.1}",
+                n, p, tours, pm.samples, dt
+            );
+            for k in 1..=n.min(10) {
+                println!("a_{k} estimate: {:.4e}", pm.log_ak(k).exp());
+            }
+            if n > 2 {
+                let lam = (pm.log_ak(n) - pm.log_ak(n - 1)
+                    + ((n as f64) / (n as f64 - 1.0)).ln() * 1.0)
+                    .exp()
+                    * (n as f64 / (n as f64 - 1.0)).powf(0.0);
+                println!("lambda_hat (a_n/a_(n-1)): {:.4}", lam);
+            }
+            let (rg2, se) = pm.rg2_mean_stderr();
+            println!("<Rg^2>_{n} = {:.4} +- {:.4}", rg2, se);
         }
         "selftest" => {
             // heavy invariant checking at several sizes
