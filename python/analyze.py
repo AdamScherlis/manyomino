@@ -72,6 +72,15 @@ def analyze(path, burn_frac=0.3):
     rg = [math.sqrt(max(v, 0.0)) for v in xs]
     mean1, se1, _ = mean_stderr_ess(rg, tau_rec)
     bse = batch_stderr(xs)
+    # Sokal windowing misses slow modes whose correlation extends past the
+    # window; coarse batch means catch them.  Use the more conservative of
+    # the two error estimates (scaling everything consistently).
+    bse8 = batch_stderr(xs, 8)
+    infl = max(1.0, (bse8 if not math.isnan(bse8) else 0.0) / se2) if se2 > 0 else 1.0
+    se2 *= infl
+    se1 *= infl
+    ess /= infl * infl
+    tau_steps *= infl * infl
     return {
         "file": path,
         "records": len(xs),

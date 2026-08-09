@@ -49,7 +49,8 @@ proposal is accepted.
     R_g² time series + periodic shape snapshots.
   - `bench` — moves/second.
 - `python/analyze.py` — τ (Sokal-windowed, binned), ESS, means ± stderr for a
-  time series.
+  time series; the stderr is the more conservative of the Sokal estimate and
+  coarse batch means, since windowing misses slow modes.
 - `python/twoseed.py` — two-seed convergence test (bar vs rect chain).
 - `python/nufit.py` — weighted log-log fit of ⟨R_g⟩ vs n.
 - `python/render.py` — stdlib PNG renderer (`bw` and graph-distance `dist`
@@ -87,7 +88,9 @@ proposal is accepted.
 | move-type fractions, reference vs fast, n=5,6 | agree to ~10⁻³ |
 | mixed-kernel chi-square, n=5 / n=6 / n=8 | p = 0.94 / 0.19 / 0.43 |
 | cycle + near-miss stats vs exact census, n=12 (505,861 shapes) | all \|z\| ≤ 1.4 |
-| two-seed convergence, n=1000 / 2000 / 3000 / 5000 / 10000 | \|z\| = 0.06 / 0.49 / 0.22 / 1.28 / 0.09, all PASS |
+| two-seed convergence, n=1000 / 2000 / 3000 / 10000 | \|z\| = 0.06 / 0.49 / 0.09 / 0.67, all PASS |
+| two-seed, n=5000, four independent chains pooled by init | \|z\| = 1.87, PASS |
+| leaf-to-gap probe: largest almost-cycle (156/108 cells) in n=10⁴ snapshots | legal, probability (1/n)(1/\|P\|), invariants pass |
 | ν fit, n = 100..10000 | 0.6439 ± 0.0015 (expect ≈ 0.6408) |
 
 Measured autocorrelation time, single-cell kernel: τ ≈ 0.3 · n^2.2 moves.
