@@ -19,10 +19,10 @@ def load(path):
         for line in f:
             # the file may be mid-write; skip incomplete trailing lines
             try:
-                s, v = line.rstrip("\n").split(",")
-                steps.append(int(s))
-                vals.append(float(v))
-            except ValueError:
+                parts = line.rstrip("\n").split(",")
+                steps.append(int(parts[0]))
+                vals.append(float(parts[1]))
+            except (ValueError, IndexError):
                 continue
     return steps, vals
 

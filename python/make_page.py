@@ -216,6 +216,16 @@ convergence, autocorrelation) and reproduction instructions:
 <a href="https://github.com/AdamScherlis/manyomino">AdamScherlis/manyomino</a>.
 A size appears here only after two independently-seeded chains agree on
 &lang;R<sub>g</sub>&sup2;&rang; and every shown snapshot is &ge;5&tau; into its chain.</p>
+<section class="card">
+<h2>Measured scaling</h2>
+<p class="sub">radius of gyration vs size over the converged chains; the slope is the
+branched-polymer exponent (literature &nu; &asymp; 0.6408).  Independent PERM
+(non-MCMC) cross-checks agree at n &le; 1000, and give Klarner's growth constant
+&lambda; = 4.058 (exact: 4.0626&hellip;).  Equilibrium structure: &asymp;0.073
+independent cycles and &asymp;1.195 perimeter sites per cell.</p>
+<figure style="max-width:40rem"><img src="figs/nufit.svg" alt="log-log plot of radius of
+gyration vs size with nu fit"></figure>
+</section>
 {''.join(cards)}
 {pend_html}
 <footer>Generated {stamp} from the manyomino production runs.</footer>

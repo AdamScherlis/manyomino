@@ -116,6 +116,8 @@ struct State {
     /// cumulative coordinate shift from grid rebuilds (for external watchers)
     shift_x: i64,
     shift_y: i64,
+    /// number of adjacent occupied pairs (edges); cycles = E - n + 1
+    e_edges: u64,
     /// bridge-test node cap per front (0 = uncapped); give-up is symmetric:
     /// on any acceptable move the forward and reverse tests resolve at the
     /// same per-front pop counts (min(|B|,|R|)), so capping cannot break
@@ -204,6 +206,7 @@ impl State {
             shift_y: 0,
             cp_cap: 0,
             n_cp_capped: 0,
+            e_edges: 0,
         };
         for (x, y) in pts {
             st.add_cell(((y + my) * w + x + mx) as u32);
@@ -239,6 +242,7 @@ impl State {
                 self.nbr[j as usize][d ^ 1] = i;
             }
         }
+        self.e_edges += links.iter().filter(|&&l| l != Self::NONE).count() as u64;
         self.nbr.push(links);
         self.occ_bits[(pos >> 6) as usize] |= 1u64 << (pos & 63);
         let (x, y) = ((pos as usize % self.w) as i64, (pos as usize / self.w) as i64);
@@ -252,6 +256,7 @@ impl State {
     /// adjacency links consistent.
     #[inline(always)]
     fn remove_cell(&mut self, ci: usize, pos: u32) {
+        self.e_edges -= self.nbr[ci].iter().filter(|&&l| l != Self::NONE).count() as u64;
         // unlink ci from its neighbors
         for d in 0..4 {
             let j = self.nbr[ci][d];
@@ -953,6 +958,7 @@ impl State {
         self.cell_idx = vec![0; nw * nh];
         self.per_idx = vec![0; nw * nh];
         self.nbr.clear();
+        self.e_edges = 0;
         self.per.clear();
         self.sx = 0;
         self.sy = 0;
@@ -1062,6 +1068,15 @@ impl State {
                 assert_eq!(self.nbr[i][d], want, "nbr link");
             }
         }
+        // edge count
+        let mut e = 0u64;
+        for i in 0..self.cells.len() {
+            e += self.nbr[i].iter().filter(|&&l| l != Self::NONE).count() as u64;
+        }
+        // (degree sum = 2E; add_cell counts each edge once, at whichever
+        // endpoint arrived second)
+        assert_eq!(e % 2, 0, "odd degree sum");
+        assert_eq!(self.e_edges, e / 2, "edge count");
         // coordinate sums
         let (mut sx, mut sy, mut sx2, mut sy2) = (0i64, 0i64, 0i64, 0i64);
         for &p in &self.cells {
@@ -1218,7 +1233,7 @@ fn main() {
             let mut writer = out_path.map(|p| {
                 let f = std::fs::File::create(p).expect("create out");
                 let mut w = std::io::BufWriter::new(f);
-                writeln!(w, "step,rg2").unwrap();
+                writeln!(w, "step,rg2,perim,cycles").unwrap();
                 w
             });
             let t0 = std::time::Instant::now();
@@ -1230,7 +1245,9 @@ fn main() {
                 }
                 done += chunk;
                 if let Some(w) = writer.as_mut() {
-                    writeln!(w, "{},{:.6}", done, st.rg2()).unwrap();
+                    let cyc = st.e_edges as i64 - st.cells.len() as i64 + 1;
+                    writeln!(w, "{},{:.6},{},{}", done, st.rg2(), st.per.len(), cyc)
+                        .unwrap();
                 }
                 if check_every > 0 && done % check_every == 0 {
                     st.check_invariants(n);
@@ -1850,6 +1867,15 @@ fn main() {
             );
             for k in 1..=n.min(10) {
                 println!("a_{k} estimate: {:.4e}", pm.log_ak(k).exp());
+            }
+            if let Some(path) = args.get("ak-out") {
+                let f = std::fs::File::create(path).expect("create ak-out");
+                let mut wtr = std::io::BufWriter::new(f);
+                writeln!(wtr, "k log_ak").unwrap();
+                for k in 1..=n {
+                    writeln!(wtr, "{k} {:.8}", pm.log_ak(k)).unwrap();
+                }
+                wtr.flush().unwrap();
             }
             if n > 2 {
                 let lam = (pm.log_ak(n) - pm.log_ak(n - 1)
