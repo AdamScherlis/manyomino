@@ -210,6 +210,11 @@ is stationary).  Uniform polyominoes sit in the branched-polymer universality cl
 dendrites with R<sub>g</sub> ~ n<sup>&nu;</sup>, &nu; &asymp; 0.64 &mdash; nothing like compact
 blobs.  Cells are colored by graph distance from an extremal cell to show the branch
 structure.</p>
+<figure style="margin:1.2rem 0;background:#fff;border:1px solid var(--rule);
+border-radius:10px;padding:.6rem"><img style="width:100%;height:auto;display:block;
+image-rendering:pixelated" src="figs/hero_n30000.png" alt="uniform random polyomino
+with 30,000 cells"><figcaption style="font-size:.78em;color:var(--mut);margin-top:.3rem">
+a single uniform sample, n = 30,000 (colored by graph distance)</figcaption></figure>
 <p class="lede" style="font-size:.95em">Sampler, validation suite (exact-count cross-checks,
 chi-square uniformity against OEIS <a href="https://oeis.org/A001168">A001168</a>, two-seed
 convergence, autocorrelation) and reproduction instructions:
