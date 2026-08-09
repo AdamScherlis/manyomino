@@ -55,6 +55,10 @@ proposal is accepted.
 - `python/nufit.py` — weighted log-log fit of ⟨R_g⟩ vs n.
 - `python/render.py` — stdlib PNG renderer (`bw` and graph-distance `dist`
   modes).
+- `rust/src/perm.rs` — PERM (pruned-enriched Rosenbluth) sampler: Leath-style
+  FIFO growth, log-space weights, adaptive pruning/enrichment; independent
+  cross-check of the MCMC and estimator of the animal counts a_k
+  (`manyomino perm --n N --tours T --p 0.4`).
 - `python/make_page.py` — regenerates the gallery page from current runs;
   only publishes sizes whose two-seed test passes and whose snapshots are
   ≥ 5τ into their chain.
@@ -93,7 +97,12 @@ proposal is accepted.
 | leaf-to-gap probe: largest almost-cycle (156/108 cells) in n=10⁴ snapshots | legal, probability (1/n)(1/\|P\|), invariants pass |
 | detailed balance on captured cycle-seal/breach transitions (n=10⁴) | exact: \|P\| identical both ways; implementation audit: removability boundary exhaustive 0 mismatches, perimeter set == from-scratch, destination uniform (p=0.11–0.83) |
 | end-to-end P(A→A′) vs P(A′→A), 1.2×10¹² unmodified-step trials each | seal: 10099 vs 10047 hits (z=+0.4); breach: 9840 vs 10118 (z=−2.0); all four consistent with exact 1/(n\|P\|) |
-| ν fit, n = 100..10000 | 0.6439 ± 0.0015 (expect ≈ 0.6408) |
+| ν fit, n = 100..30000 | 0.6436 ± 0.0010 (expect ≈ 0.6408) |
+| PERM (independent non-MCMC sampler): a₁..a₁₀ vs A001168 | within ~0.5% statistical |
+| PERM λ̂ | ≈ 4.01–4.08 (Klarner 4.0626) |
+| PERM ⟨R_g²⟩ vs MCMC: n=10 (exact) / 100 / 300 / 1000 | 3.1794±27 vs 3.1801 exact; z = 1.0 / 0.4 / pooled 1380±37 vs 1339–1382 |
+| bridge-cap symmetry (chi-square n=8, cap=2, cap fired 1.5×10⁶ times) | p = 0.885 |
+| two-seed, n=30000 | \|z\| = 0.61, PASS |
 
 Measured autocorrelation time, single-cell kernel: τ ≈ 0.3 · n^2.2 moves.
 The mixed kernel (33% cut-and-paste branch moves, see below) collapses this:
