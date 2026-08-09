@@ -228,8 +228,7 @@ branched-polymer exponent (literature &nu; &asymp; 0.6408).  Independent PERM
 (non-MCMC) cross-checks agree at n &le; 1000, and give Klarner's growth constant
 &lambda; = 4.058 (exact: 4.0626&hellip;).  Equilibrium structure: &asymp;0.073
 independent cycles and &asymp;1.195 perimeter sites per cell.</p>
-<figure style="max-width:40rem"><img src="figs/nufit.svg" alt="log-log plot of radius of
-gyration vs size with nu fit"></figure>
+<figure style="max-width:40rem;background:#fff;border:1px solid var(--rule);border-radius:8px;padding:.5rem"><img style="width:100%;height:auto;display:block" src="figs/nufit.png" alt="log-log plot of radius of gyration vs size with nu fit"></figure>
 </section>
 {''.join(cards)}
 {pend_html}
