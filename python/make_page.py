@@ -168,8 +168,9 @@ def build(site_dir, max_per_n=4):
         cards.append(f"""
 <section class="card">
 <h2>n = {n:,}<span class="badge ok">two-seed converged</span></h2>
-<p class="sub">independent chains from a 1&times;{n} bar and a &radic;n&times;&radic;n
-rectangle agree: |z| = {st['z']:.2f} on &lang;R<sub>g</sub>&sup2;&rang;</p>
+<p class="sub">independent chains from a stringy bar seed and a compact
+&radic;n&times;&radic;n rectangle seed agree: |z| = {st['z']:.2f} on
+&lang;R<sub>g</sub>&sup2;&rang;</p>
 <div class="stats">
   <div>&lang;R<sub>g</sub>&rang; <b>{st['rg']:.1f}</b></div>
   <div>&tau; <b>{st['tau']:.1e}</b> moves</div>

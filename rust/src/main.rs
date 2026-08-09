@@ -127,6 +127,13 @@ impl State {
                 let w0 = ((n as f64).sqrt().round() as usize).max(1);
                 (0..n).map(|i| (i % w0, i / w0)).collect()
             }
+            // 2 x (n/2) bar: geometrically as stringy as a 1 x n bar, but
+            // with no interior cut cells, so early moves stay cheap at
+            // large n (a 1 x n bar costs O(n) per cut test while unfolding)
+            "bar2" => {
+                let w0 = n.div_ceil(2);
+                (0..n).map(|i| (i % w0, i / w0)).collect()
+            }
             _ => panic!("unknown init {init}"),
         };
         Self::from_points(pts)
@@ -1819,7 +1826,7 @@ fn main() {
                                        (5, 200_000, 100), (10, 200_000, 200),
                                        (37, 100_000, 500), (100, 100_000, 1000),
                                        (1000, 50_000, 5000)] {
-                for init in ["bar", "rect"] {
+                for init in ["bar", "rect", "bar2"] {
                     let mut st = State::new(nn, init);
                     let mut r = Rng::new(seed ^ nn as u64);
                     for i in 0..steps {
