@@ -94,11 +94,12 @@ struct State {
     fb: Vec<Vec<u64>>,
     queue: Vec<u32>,
     fqueues: Vec<Vec<u32>>,
-    // coordinate sums for O(1) radius of gyration
+    // coordinate sums for O(1) radius of gyration and gyration tensor
     sx: i64,
     sy: i64,
     sx2: i64,
     sy2: i64,
+    sxy: i64,
     // move statistics
     n_cut_reject: u64,
     n_noop: u64,
@@ -198,6 +199,7 @@ impl State {
             sy: 0,
             sx2: 0,
             sy2: 0,
+            sxy: 0,
             n_cut_reject: 0,
             n_noop: 0,
             n_moved: 0,
@@ -259,6 +261,7 @@ impl State {
         self.sy += y;
         self.sx2 += x * x;
         self.sy2 += y * y;
+        self.sxy += x * y;
     }
 
     /// Swap-remove the cell at index `ci` (position `pos`), keeping the
@@ -295,6 +298,7 @@ impl State {
         self.sy -= y;
         self.sx2 -= x * x;
         self.sy2 -= y * y;
+        self.sxy -= x * y;
     }
 
     #[inline(always)]
@@ -973,6 +977,7 @@ impl State {
         self.sy = 0;
         self.sx2 = 0;
         self.sy2 = 0;
+        self.sxy = 0;
         for &p in &old {
             let (x, y) = (p as usize % w, p as usize / w);
             self.add_cell(((y - miny + my) * nw + (x - minx + mx)) as u32);
@@ -982,6 +987,23 @@ impl State {
         self.shift_x += sh.0;
         self.shift_y += sh.1;
         sh
+    }
+
+    /// asphericity (l1-l2)^2/(l1+l2)^2 of the gyration tensor
+    fn asphericity(&self) -> f64 {
+        let k = self.cells.len() as f64;
+        let mx = self.sx as f64 / k;
+        let my = self.sy as f64 / k;
+        let sxx = self.sx2 as f64 / k - mx * mx;
+        let syy = self.sy2 as f64 / k - my * my;
+        let sxy = self.sxy as f64 / k - mx * my;
+        let tr = sxx + syy;
+        let diff2 = (sxx - syy) * (sxx - syy) + 4.0 * sxy * sxy;
+        if tr <= 0.0 {
+            0.0
+        } else {
+            diff2 / (tr * tr)
+        }
     }
 
     fn rg2(&self) -> f64 {
@@ -1087,15 +1109,20 @@ impl State {
         assert_eq!(e % 2, 0, "odd degree sum");
         assert_eq!(self.e_edges, e / 2, "edge count");
         // coordinate sums
-        let (mut sx, mut sy, mut sx2, mut sy2) = (0i64, 0i64, 0i64, 0i64);
+        let (mut sx, mut sy, mut sx2, mut sy2, mut sxy) = (0i64, 0i64, 0i64, 0i64, 0i64);
         for &p in &self.cells {
             let (x, y) = ((p as usize % self.w) as i64, (p as usize / self.w) as i64);
             sx += x;
             sy += y;
             sx2 += x * x;
             sy2 += y * y;
+            sxy += x * y;
         }
-        assert_eq!((sx, sy, sx2, sy2), (self.sx, self.sy, self.sx2, self.sy2), "sums");
+        assert_eq!(
+            (sx, sy, sx2, sy2, sxy),
+            (self.sx, self.sy, self.sx2, self.sy2, self.sxy),
+            "sums"
+        );
     }
 
     fn stats_line(&self) -> String {
@@ -1242,7 +1269,7 @@ fn main() {
             let mut writer = out_path.map(|p| {
                 let f = std::fs::File::create(p).expect("create out");
                 let mut w = std::io::BufWriter::new(f);
-                writeln!(w, "step,rg2,perim,cycles").unwrap();
+                writeln!(w, "step,rg2,perim,cycles,asph").unwrap();
                 w
             });
             let t0 = std::time::Instant::now();
@@ -1255,8 +1282,16 @@ fn main() {
                 done += chunk;
                 if let Some(w) = writer.as_mut() {
                     let cyc = st.e_edges as i64 - st.cells.len() as i64 + 1;
-                    writeln!(w, "{},{:.6},{},{}", done, st.rg2(), st.per.len(), cyc)
-                        .unwrap();
+                    writeln!(
+                        w,
+                        "{},{:.6},{},{},{:.6}",
+                        done,
+                        st.rg2(),
+                        st.per.len(),
+                        cyc,
+                        st.asphericity()
+                    )
+                    .unwrap();
                 }
                 if check_every > 0 && done % check_every == 0 {
                     st.check_invariants(n);
