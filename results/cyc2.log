@@ -1,10 +1,3 @@
-
-thread 'main' (5166) panicked at src/main.rs:204:23:
-index out of bounds: the len is 8053 but the index is 8060
-stack backtrace:
-   0: __rustc::rust_begin_unwind
-   1: core::panicking::panic_fmt
-   2: core::panicking::panic_bounds_check
-   3: manyomino::main::{{closure}}
-   4: manyomino::main
-note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+birth at step 5191: hole area 200 (c=(598,378) -> s=(537,429))
+death (breach) at step 5291 after 100 steps of life
+done; steps=5291 moved=0.2931 noop=0.0002 cut_reject=0.7067 leaf=0.1661 ring=0.1134 bfs=0.7205 bfs_nodes_per_step=641.24 rebuilds=0 cp[accept=0 invalid=0 notbridge=0 toobig=0 nopair=0]

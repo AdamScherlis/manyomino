@@ -1272,6 +1272,7 @@ fn main() {
                     return Some(Vec::new());
                 }
                 let w = st.w as i64;
+                let h = st.h as i64;
                 let mut reg: Vec<u32> = vec![start];
                 let mut seen = std::collections::HashSet::new();
                 seen.insert(start);
@@ -1279,6 +1280,10 @@ fn main() {
                 while head < reg.len() {
                     let u = reg[head] as i64;
                     head += 1;
+                    let (x, y) = (u % w, u / w);
+                    if x <= 1 || x >= w - 2 || y <= 1 || y >= h - 2 {
+                        return None; // reached the border: this is the outside
+                    }
                     for d in [1, -1, w, -w] {
                         let v = (u + d) as u32;
                         if !st.occ(v) && seen.insert(v) {
@@ -1336,9 +1341,15 @@ fn main() {
                             seen.insert(e);
                             let mut head = 0;
                             let mut escaped = false;
+                            let h = st.h as i64;
                             while head < reg2.len() {
                                 let u = reg2[head] as i64;
                                 head += 1;
+                                let (x, y) = (u % w, u / w);
+                                if x <= 1 || x >= w - 2 || y <= 1 || y >= h - 2 {
+                                    escaped = true;
+                                    break;
+                                }
                                 for dd in [1, -1, w, -w] {
                                     let v = (u + dd) as u32;
                                     let empty_before =
