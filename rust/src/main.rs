@@ -1229,6 +1229,94 @@ fn main() {
             );
             eprintln!("{}", st.stats_line());
         }
+        "probe" => {
+            // Execute one specific single-cell transition on a loaded shape,
+            // using the exact production move machinery: move the cell at
+            // --leaf "x,y" to the empty site --target "x,y" (raw dump
+            // coordinates).  Verifies: leaf passes the connectivity check,
+            // target is a selectable perimeter site of A - leaf, and the
+            // final state passes all invariants.  Prints the per-step
+            // proposal probability of exactly this transition.
+            let file = args.get("init-file").expect("--init-file");
+            let parse_xy = |s: &str| -> (i64, i64) {
+                let mut it = s.split(',');
+                (
+                    it.next().unwrap().trim().parse().unwrap(),
+                    it.next().unwrap().trim().parse().unwrap(),
+                )
+            };
+            let (lx, ly) = parse_xy(args.get("leaf").expect("--leaf"));
+            let (tx, ty) = parse_xy(args.get("target").expect("--target"));
+            // replicate from_file's translation so raw coords line up
+            let text = std::fs::read_to_string(file).expect("read init file");
+            let mut pts: Vec<(i64, i64)> = Vec::new();
+            for line in text.lines() {
+                let mut it = line.split_whitespace();
+                pts.push((
+                    it.next().unwrap().parse().unwrap(),
+                    it.next().unwrap().parse().unwrap(),
+                ));
+            }
+            let minx = pts.iter().map(|p| p.0).min().unwrap();
+            let miny = pts.iter().map(|p| p.1).min().unwrap();
+            let mut st = State::from_file(file);
+            let n = st.cells.len();
+            st.check_invariants(n);
+            // from_file translates by (-minx,-miny); State::new adds margins
+            // (mx,my) = position of cell (0,0).  Recover the offset from any
+            // known cell: use the first point in the file.
+            let p0 = st.cells[st.cell_idx
+                .iter()
+                .position(|&v| v == 1)
+                .map(|_| 0usize)
+                .unwrap_or(0)];
+            let _ = p0;
+            // offset = grid position of file point pts[0] minus its shifted xy
+            let first = st.cells[0] as i64; // cells pushed in file order
+            let (fx, fy) = (first % st.w as i64, first / st.w as i64);
+            let (offx, offy) = (fx - (pts[0].0 - minx), fy - (pts[0].1 - miny));
+            let w = st.w as i64;
+            let lpos = ((ly - miny + offy) * w + (lx - minx + offx)) as u32;
+            let tpos = ((ty - miny + offy) * w + (tx - minx + offx)) as u32;
+            assert!(st.occ(lpos), "leaf position not occupied");
+            assert!(!st.occ(tpos), "target position not empty");
+            let ci = st.cell_idx[lpos as usize] as usize - 1;
+            // 1. production connectivity check
+            let removable = st.removable(ci);
+            println!("leaf ({lx},{ly}) removable: {removable}");
+            assert!(removable, "leaf failed the connectivity check");
+            // 2. production removal + perimeter update (exactly as step())
+            st.remove_cell(ci, lpos);
+            st.per_add(lpos);
+            for d in [1, -1, w, -w] {
+                let q = (lpos as i64 + d) as u32;
+                if !st.occ(q) && st.per_idx[q as usize] != 0 && !st.has_occupied_neighbor(q) {
+                    st.per_remove(q);
+                }
+            }
+            let per_len = st.per.len();
+            let in_per = st.per_idx[tpos as usize] != 0;
+            println!(
+                "target ({tx},{ty}) in perimeter of A-leaf: {in_per}  (|P| = {per_len}, n = {n})"
+            );
+            assert!(in_per, "target is not a selectable perimeter site");
+            // 3. complete the transition exactly as step() would
+            st.per_remove(tpos);
+            st.add_cell(tpos);
+            for d in [1, -1, w, -w] {
+                let q = (tpos as i64 + d) as u32;
+                if !st.occ(q) && st.per_idx[q as usize] == 0 {
+                    st.per_add(q);
+                }
+            }
+            st.check_invariants(n);
+            println!(
+                "transition executed; all invariants pass; proposal probability = 1/{} * 1/{} = {:.3e}",
+                n,
+                per_len,
+                1.0 / (n as f64) / (per_len as f64)
+            );
+        }
         "selftest" => {
             // heavy invariant checking at several sizes
             for (nn, steps, every) in [(2usize, 200_000u64, 100u64), (3, 200_000, 100),
