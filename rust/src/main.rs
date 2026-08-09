@@ -116,6 +116,12 @@ struct State {
     /// cumulative coordinate shift from grid rebuilds (for external watchers)
     shift_x: i64,
     shift_y: i64,
+    /// bridge-test node cap per front (0 = uncapped); give-up is symmetric:
+    /// on any acceptable move the forward and reverse tests resolve at the
+    /// same per-front pop counts (min(|B|,|R|)), so capping cannot break
+    /// detailed balance; capped give-ups are rejections (self-loops)
+    cp_cap: u64,
+    n_cp_capped: u64,
 }
 
 impl State {
@@ -196,6 +202,8 @@ impl State {
             n_cp_accept: 0,
             shift_x: 0,
             shift_y: 0,
+            cp_cap: 0,
+            n_cp_capped: 0,
         };
         for (x, y) in pts {
             st.add_cell(((y + my) * w + x + mx) as u32);
@@ -531,9 +539,15 @@ impl State {
         queues[0].push(ui as u32);
         queues[1].push(vi as u32);
         let mut heads = [0usize; 2];
+        let cap = if self.cp_cap == 0 { u64::MAX } else { self.cp_cap };
         // verdict: None undecided; Some(true) bridge; Some(false) not
         let mut verdict: Option<bool> = None;
         'outer: while verdict.is_none() {
+            if heads[0] as u64 > cap && heads[1] as u64 > cap {
+                // symmetric give-up: min component larger than the cap
+                self.n_cp_capped += 1;
+                break 'outer;
+            }
             for f in 0..2 {
                 if heads[f] >= queues[f].len() {
                     verdict = Some(true); // side f fully explored, never met
@@ -1063,7 +1077,7 @@ impl State {
     fn stats_line(&self) -> String {
         let total = self.n_cut_reject + self.n_noop + self.n_moved
             + self.n_cp_accept + self.n_cp_invalid + self.n_cp_notbridge
-            + self.n_cp_toobig + self.n_cp_nopair;
+            + self.n_cp_toobig + self.n_cp_nopair + self.n_cp_capped;
         format!(
             "steps={} moved={:.4} noop={:.4} cut_reject={:.4} leaf={:.4} ring={:.4} bfs={:.4} bfs_nodes_per_step={:.2} rebuilds={}",
             total,
@@ -1076,9 +1090,9 @@ impl State {
             self.n_bfs_nodes as f64 / total as f64,
             self.n_rebuild,
         ) + &format!(
-            " cp[accept={} invalid={} notbridge={} toobig={} nopair={}]",
+            " cp[accept={} invalid={} notbridge={} toobig={} nopair={} capped={}]",
             self.n_cp_accept, self.n_cp_invalid, self.n_cp_notbridge,
-            self.n_cp_toobig, self.n_cp_nopair,
+            self.n_cp_toobig, self.n_cp_nopair, self.n_cp_capped,
         )
     }
 }
@@ -1118,6 +1132,7 @@ fn main() {
             let steps: u64 = get(&args, "steps", 10_000_000);
             let cp_inv: u64 = get(&args, "cp-inv", 0);
             let mut st = State::new(n, &init);
+            st.cp_cap = get(&args, "cp-cap", 4000);
             let t0 = std::time::Instant::now();
             for _ in 0..steps {
                 st.step_mixed(&mut rng, cp_inv);
@@ -1161,6 +1176,7 @@ fn main() {
             let check_every: u64 = get(&args, "check-every", 0);
             let cp_inv: u64 = get(&args, "cp-inv", 0);
             let mut st = State::new(n, &init);
+            st.cp_cap = get(&args, "cp-cap", 4000);
             for _ in 0..burn {
                 st.step_mixed(&mut rng, cp_inv);
             }
@@ -1196,6 +1212,7 @@ fn main() {
                 Some(p) => State::from_file(p),
                 None => State::new(n, &init),
             };
+            st.cp_cap = get(&args, "cp-cap", 4000);
             let n = st.cells.len();
             st.check_invariants(n);
             let mut writer = out_path.map(|p| {
