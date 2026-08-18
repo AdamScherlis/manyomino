@@ -22,7 +22,7 @@ for SRC in "$A" "$B" "$C" "$D"; do
     4) TAG=rect_c; PFX=gallery/raw/n100000c_rect;;
   esac
   OUT="results/prod/n100000_${TAG}_g${GEN}.csv"
-  nohup $M run --init-file "$SRC" --steps 1000000000 --record-every 50000 --seed $((GEN+i)) --cp-inv 3 --cp-cap 0 --out "$OUT" --dump-every 50000000 --dump-prefix "$PFX" --check-every 250000000 >/dev/null 2>"${OUT%.csv}.log" &
+  nohup $M run --init-file "$SRC" --steps 1000000000 --record-every 50000 --seed $((GEN+i)) --cp-inv 3 --cp-cap 0 --out "$OUT" --dump-every 20000000 --dump-prefix "$PFX" --check-every 250000000 >/dev/null 2>"${OUT%.csv}.log" &
   disown
 done
 sleep 1
