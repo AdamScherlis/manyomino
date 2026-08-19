@@ -3,7 +3,7 @@
 Uniformly sample extremely large polyominoes.
 
 Samples polyominoes (lattice animals on Z², 4-connectivity) **uniformly at
-random for fixed size n**, from n ~ 100 up to n ~ 10,000, renders them, and
+random for fixed size n**, from n ~ 100 up to n = 100,000+, renders them, and
 proves — via a validation suite — that the samples really are uniform and the
 chain really has mixed.  Target distribution is uniform over **fixed**
 polyominoes (translation classes, OEIS
@@ -103,6 +103,8 @@ proposal is accepted.
 | PERM ⟨R_g²⟩ vs MCMC: n=10 (exact) / 100 / 300 / 1000 | 3.1794±27 vs 3.1801 exact; z = 1.0 / 0.4 / pooled 1380±37 vs 1339–1382 |
 | bridge-cap symmetry (chi-square n=8, cap=2, cap fired 1.5×10⁶ times) | p = 0.885 |
 | two-seed, n=30000 | \|z\| = 0.61, PASS |
+| n=100,000: 12 pooled chain segments by lineage, PDG-inflated errors | \|z\| = 2.87 then 1.84 (consecutive), pooled ESS 136/122, PASS |
+| n=100,000 local observables across all segments | perimeter/cell 1.1946–1.1965, cycles/cell 0.0725–0.0730, no lineage grouping |
 
 Measured autocorrelation time, single-cell kernel: τ ≈ 0.3 · n^2.2 moves.
 The mixed kernel (33% cut-and-paste branch moves, see below) collapses this:
