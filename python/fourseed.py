@@ -19,7 +19,13 @@ def pool(paths, burn):
         return None
     w = [1 / r["rg2_stderr"] ** 2 for r in rs]
     m = sum(r["rg2_mean"] * wi for r, wi in zip(rs, w)) / sum(w)
-    return m, math.sqrt(1 / sum(w)), rs
+    se = math.sqrt(1 / sum(w))
+    # PDG-style scale factor: when segments scatter beyond their nominal
+    # errors (unmodeled autocorrelation), inflate the pooled error
+    if len(rs) > 1:
+        chi2 = sum((r["rg2_mean"] - m) ** 2 / r["rg2_stderr"] ** 2 for r in rs)
+        se *= max(1.0, math.sqrt(chi2 / (len(rs) - 1)))
+    return m, se, rs
 
 
 def run(stringy, compact, burn=0.5):
