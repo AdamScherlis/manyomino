@@ -38,7 +38,13 @@ def run(stringy, compact, burn=0.5):
         per = "  ".join(f"{r['rg2_mean']:.4g}±{r['rg2_stderr']:.2g}(ESS {r['ess']:.0f})" for r in rs)
         print(f"{name:>8}: pooled {m:.6g} ± {se:.3g}   [{per}]")
     z = abs(a[0] - b[0]) / math.sqrt(a[1] ** 2 + b[1] ** 2)
-    ess_ok = all(r["ess"] >= 8 for r in a[2] + b[2])
+    # frozen segments from dead generations never grow, so gate on pooled
+    # ESS per group (with PDG-inflated errors) rather than per segment
+    ess_ok = (
+        all(r["ess"] >= 5 for r in a[2] + b[2])
+        and sum(r["ess"] for r in a[2]) >= 30
+        and sum(r["ess"] for r in b[2]) >= 30
+    )
     print(f"|z| = {z:.2f}   {'PASS' if z < 3 and ess_ok else 'FAIL'}")
     return z < 3 and ess_ok
 
