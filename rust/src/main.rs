@@ -782,6 +782,127 @@ impl State {
         true
     }
 
+    /// Pivot move: detach the branch at a bridge edge, apply a uniform
+    /// lattice symmetry about v, and re-attach at the SAME edge (single
+    /// contact required).  Forward and reverse probabilities are both
+    /// (1/4n)(1/8) with g <-> g^{-1}: symmetric, no Hastings factor.
+    /// Relaxes global shape (elongation) far faster than random
+    /// re-placement because the anchor already accommodated the branch.
+    fn pivot(&mut self, rng: &mut Rng) -> bool {
+        let n = self.cells.len();
+        let ui = rng.below(n as u64) as usize;
+        let d0 = rng.below(4) as usize;
+        let vi_ = self.nbr[ui][d0];
+        if vi_ == Self::NONE {
+            self.n_cp_nopair += 1;
+            return false;
+        }
+        let vi = vi_ as usize;
+        let Some(bidx) = self.bridge_component(ui, vi) else {
+            return false;
+        };
+        let w0 = self.w as i64;
+        let pivot_pos = self.cells[vi] as i64;
+        let (pvx, pvy) = (pivot_pos % w0, pivot_pos / w0);
+        let bpos: Vec<u32> = bidx.iter().map(|&i| self.cells[i as usize]).collect();
+        let brel: Vec<(i64, i64)> = bpos
+            .iter()
+            .map(|&p| ((p as i64 % w0) - pvx, (p as i64 / w0) - pvy))
+            .collect();
+        let g = rng.below(8);
+        if g == 0 {
+            self.n_cp_accept += 1; // identity pivot: state unchanged
+            return false;
+        }
+        let gb: Vec<(i64, i64)> = brel
+            .iter()
+            .map(|&(x, y)| match g {
+                1 => (-y, x),
+                2 => (-x, -y),
+                3 => (y, -x),
+                4 => (x, -y),
+                5 => (-x, y),
+                6 => (y, x),
+                _ => (-y, -x),
+            })
+            .collect();
+        for &p in &bpos {
+            let ci = self.cell_idx[p as usize] as usize - 1;
+            self.remove_cell(ci, p);
+        }
+        // anchor: the transformed pivot cell keeps its position (g fixes 0,0)
+        let (tx, ty) = (pvx, pvy);
+        let ext = gb.iter().map(|&(x, y)| x.abs().max(y.abs())).max().unwrap() as usize;
+        let mut shift = (0i64, 0i64);
+        let mut wcur = self.w as i64;
+        {
+            let (minx, maxx) = (
+                tx + gb.iter().map(|p| p.0).min().unwrap(),
+                tx + gb.iter().map(|p| p.0).max().unwrap(),
+            );
+            let (miny, maxy) = (
+                ty + gb.iter().map(|p| p.1).min().unwrap(),
+                ty + gb.iter().map(|p| p.1).max().unwrap(),
+            );
+            if minx < 2 || miny < 2 || maxx >= self.w as i64 - 2 || maxy >= self.h as i64 - 2
+            {
+                shift = self.rebuild_extra(ext + 4);
+                wcur = self.w as i64;
+            }
+        }
+        let (tx, ty) = (pvx + shift.0, pvy + shift.1);
+        let mut contacts = 0u32;
+        let mut ok = true;
+        for &(bx, by) in &gb {
+            let (x, y) = (tx + bx, ty + by);
+            let p = (y * wcur + x) as u32;
+            if self.occ(p) {
+                ok = false;
+                break;
+            }
+            for dd in [1, -1, wcur, -wcur] {
+                if self.occ((p as i64 + dd) as u32) {
+                    contacts += 1;
+                }
+            }
+        }
+        if !ok || contacts != 1 {
+            self.n_cp_invalid += 1;
+            let rebuilt = shift != (0, 0);
+            let mut restored: Vec<u32> = Vec::with_capacity(bpos.len());
+            for &p in &bpos {
+                let (x, y) = ((p as i64 % w0) + shift.0, (p as i64 / w0) + shift.1);
+                let np = (y * wcur + x) as u32;
+                self.add_cell(np);
+                restored.push(np);
+            }
+            if rebuilt {
+                self.fix_perimeter_around(&restored);
+            }
+            return false;
+        }
+        let mut placed: Vec<u32> = Vec::with_capacity(gb.len());
+        for &(bx, by) in &gb {
+            let p = ((ty + by) * wcur + (tx + bx)) as u32;
+            self.add_cell(p);
+            placed.push(p);
+        }
+        let rebuilt = shift != (0, 0);
+        if !rebuilt {
+            let old_sites: Vec<u32> = bpos
+                .iter()
+                .map(|&p| {
+                    let (x, y) = (p as i64 % w0, p as i64 / w0);
+                    (y * wcur + x) as u32
+                })
+                .collect();
+            self.fix_perimeter_around(&old_sites);
+        }
+        self.fix_perimeter_around(&placed);
+        self.n_cp_accept += 1;
+        true
+    }
+
     /// Repair the perimeter indexed set around the given positions: each
     /// position and its neighbors get their membership recomputed from the
     /// final occupancy.  Idempotent.
@@ -806,8 +927,17 @@ impl State {
     /// else a single-cell move.  cp_inv = 0 disables cut-and-paste.
     #[inline(always)]
     fn step_mixed(&mut self, rng: &mut Rng, cp_inv: u64) -> bool {
+        self.step_mixed3(rng, cp_inv, 0)
+    }
+
+    /// cp_inv: 1/cp_inv of steps are cut-and-paste tries; of the rest,
+    /// 1/pv_inv are pivot tries (0 disables either).
+    #[inline(always)]
+    fn step_mixed3(&mut self, rng: &mut Rng, cp_inv: u64, pv_inv: u64) -> bool {
         if cp_inv > 0 && rng.below(cp_inv) == 0 {
             self.cutpaste(rng)
+        } else if pv_inv > 0 && rng.below(pv_inv) == 0 {
+            self.pivot(rng)
         } else {
             self.step(rng)
         }
@@ -1226,15 +1356,16 @@ fn main() {
             let burn: u64 = get(&args, "burn", 100_000);
             let check_every: u64 = get(&args, "check-every", 0);
             let cp_inv: u64 = get(&args, "cp-inv", 0);
+            let pv_inv: u64 = get(&args, "pv-inv", 0);
             let mut st = State::new(n, &init);
             st.cp_cap = get(&args, "cp-cap", 4000);
             for _ in 0..burn {
-                st.step_mixed(&mut rng, cp_inv);
+                st.step_mixed3(&mut rng, cp_inv, pv_inv);
             }
             let mut counts: HashMap<u128, u64> = HashMap::new();
             for i in 0..obs {
                 for _ in 0..thin {
-                    st.step_mixed(&mut rng, cp_inv);
+                    st.step_mixed3(&mut rng, cp_inv, pv_inv);
                 }
                 *counts.entry(st.canonical_u128()).or_insert(0) += 1;
                 if check_every > 0 && i % check_every == 0 {
@@ -1255,6 +1386,7 @@ fn main() {
             let record_every: u64 = get(&args, "record-every", 10_000);
             let check_every: u64 = get(&args, "check-every", 0);
             let cp_inv: u64 = get(&args, "cp-inv", 0);
+            let pv_inv: u64 = get(&args, "pv-inv", 0);
             let out_path = args.get("out").cloned();
             let dump_path = args.get("dump-final").cloned();
             let dump_every: u64 = get(&args, "dump-every", 0);
@@ -1277,7 +1409,7 @@ fn main() {
             while done < steps {
                 let chunk = record_every.min(steps - done);
                 for _ in 0..chunk {
-                    st.step_mixed(&mut rng, cp_inv);
+                    st.step_mixed3(&mut rng, cp_inv, pv_inv);
                 }
                 done += chunk;
                 if let Some(w) = writer.as_mut() {
