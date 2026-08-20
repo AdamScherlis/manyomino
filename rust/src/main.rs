@@ -1548,6 +1548,10 @@ fn main() {
             let t0 = std::time::Instant::now();
             let mut done: u64 = 0;
             let percheck_from: u64 = get(&args, "percheck-from", 0);
+            // resume bookkeeping: offset added to step numbers in the CSV
+            // and dump filenames, so a chain restarted from a dump keeps
+            // cumulative step accounting
+            let step0: u64 = get(&args, "step-offset", 0);
             let mut prev_cells: Vec<u32> = Vec::new();
             let mut prev_geom = (0usize, 0usize, 0i64, 0i64, 0u64);
             while done < steps {
@@ -1597,7 +1601,7 @@ fn main() {
                     writeln!(
                         w,
                         "{},{:.6},{},{},{:.6},{:.4}",
-                        done,
+                        done + step0,
                         st.rg2(),
                         st.per.len(),
                         cyc,
@@ -1614,7 +1618,7 @@ fn main() {
                 }
                 if dump_every > 0 && done % dump_every == 0 {
                     if let Some(prefix) = dump_prefix.as_ref() {
-                        let f = std::fs::File::create(format!("{prefix}_{done}.txt"))
+                        let f = std::fs::File::create(format!("{prefix}_{}.txt", done + step0))
                             .expect("create dump");
                         let mut w = std::io::BufWriter::new(f);
                         for (x, y) in st.coords() {
