@@ -1605,6 +1605,9 @@ fn main() {
                         mf
                     )
                     .unwrap();
+                    // survive container kills: records are seconds apart, so
+                    // a flush per record is cheap insurance
+                    w.flush().unwrap();
                 }
                 if check_every > 0 && done % check_every == 0 {
                     st.check_invariants(n);
