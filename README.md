@@ -124,4 +124,19 @@ conserved and forward/reverse selection probabilities are equal: the kernel
 is symmetric with no Hastings factor.  Validated by the same chi-square
 battery (see table) before production use.
 
+## Tilted ensemble (β·R_g² penalty)
+
+`run --beta B` samples π(A) ∝ exp(−β·R_g²) via a Metropolis factor on the
+same symmetric kernels (validated by chi-square against the exact
+reweighted distribution, `python/validate_beta.py`).  Sweeps at n=1000 and
+n=3000 in the dimensionless coupling b = β·⟨R_g²⟩₀(n) map three regimes:
+linear response (slope −Var/⟨R_g²⟩₀, locals frozen, O(1) total entropy
+cost), a universal n-collapsed squeeze ⟨R_g²⟩/⟨R_g²⟩₀ ~ b^−0.2, and a
+collapse crossover at b ~ 0.18n where the animal densifies (perimeter/cell
+1.20 → 1.06, cycles/cell 0.073 → 0.099, movable fraction 0.295 → 0.364,
+asphericity → 0.01) and the entropy cost turns extensive (≈ −0.08
+nats/cell at b/n ≈ 1).  Figure: `results/betafig.png`; tables:
+`python/beta_analysis.py`; β=0 distribution moments: `python/betadist.py`.
+Details in `docs/NOTES.md` §9.
+
 (vibecoded — proceed at own risk. if it breaks you get to keep both pieces.)
