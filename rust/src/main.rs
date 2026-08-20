@@ -124,6 +124,7 @@ struct State {
     /// on every move type samples the tilted ensemble exactly.
     beta: f64,
     n_beta_reject: u64,
+    last_kind: u8,
     /// bridge-test node cap per front (0 = uncapped); give-up is symmetric:
     /// on any acceptable move the forward and reverse tests resolve at the
     /// same per-front pop counts (min(|B|,|R|)), so capping cannot break
@@ -225,6 +226,7 @@ impl State {
             e_edges: 0,
             beta: 0.0,
             n_beta_reject: 0,
+            last_kind: 255,
         };
         for (x, y) in pts {
             st.add_cell(((y + my) * w + x + mx) as u32);
@@ -712,6 +714,9 @@ impl State {
             .unwrap() as usize;
         let mut shift = (0i64, 0i64);
         let mut wcur = self.w as i64;
+        // NB: a rebuild can legitimately return shift == (0,0), so track it
+        // explicitly — the perimeter repair below must not key off the shift
+        let mut did_rebuild = false;
         {
             let up = self.cells[upi] as i64;
             let (ux, uy) = (up % wcur, up / wcur);
@@ -732,6 +737,7 @@ impl State {
             {
                 shift = self.rebuild_extra(ext + 4);
                 wcur = self.w as i64;
+                did_rebuild = true;
             }
         }
         let up = self.cells[upi] as i64;
@@ -779,7 +785,7 @@ impl State {
             } else {
                 self.n_cp_invalid += 1;
             }
-            let rebuilt = shift != (0, 0);
+            let rebuilt = did_rebuild;
             let mut restored: Vec<u32> = Vec::with_capacity(bpos.len());
             for &p in &bpos {
                 let (x, y) = ((p as i64 % w0) + shift.0, (p as i64 / w0) + shift.1);
@@ -800,7 +806,7 @@ impl State {
             self.add_cell(p);
             placed.push(p);
         }
-        let rebuilt = shift != (0, 0);
+        let rebuilt = did_rebuild;
         if !rebuilt {
             let old_sites: Vec<u32> = bpos.clone();
             self.fix_perimeter_around(&old_sites);
@@ -863,6 +869,8 @@ impl State {
         let ext = gb.iter().map(|&(x, y)| x.abs().max(y.abs())).max().unwrap() as usize;
         let mut shift = (0i64, 0i64);
         let mut wcur = self.w as i64;
+        // NB: a rebuild can legitimately return shift == (0,0); track it
+        let mut did_rebuild = false;
         {
             let (minx, maxx) = (
                 tx + gb.iter().map(|p| p.0).min().unwrap(),
@@ -876,6 +884,7 @@ impl State {
             {
                 shift = self.rebuild_extra(ext + 4);
                 wcur = self.w as i64;
+                did_rebuild = true;
             }
         }
         let (tx, ty) = (pvx + shift.0, pvy + shift.1);
@@ -915,7 +924,7 @@ impl State {
             if !(ok && contacts == 1) {
                 self.n_cp_invalid += 1;
             }
-            let rebuilt = shift != (0, 0);
+            let rebuilt = did_rebuild;
             let mut restored: Vec<u32> = Vec::with_capacity(bpos.len());
             for &p in &bpos {
                 let (x, y) = ((p as i64 % w0) + shift.0, (p as i64 / w0) + shift.1);
@@ -934,7 +943,7 @@ impl State {
             self.add_cell(p);
             placed.push(p);
         }
-        let rebuilt = shift != (0, 0);
+        let rebuilt = did_rebuild;
         if !rebuilt {
             let old_sites: Vec<u32> = bpos
                 .iter()
@@ -982,12 +991,34 @@ impl State {
     #[inline(always)]
     fn step_mixed3(&mut self, rng: &mut Rng, cp_inv: u64, pv_inv: u64) -> bool {
         if cp_inv > 0 && rng.below(cp_inv) == 0 {
+            self.last_kind = 0;
             self.cutpaste(rng)
         } else if pv_inv > 0 && rng.below(pv_inv) == 0 {
+            self.last_kind = 1;
             self.pivot(rng)
         } else {
+            self.last_kind = 2;
             self.step(rng)
         }
+    }
+
+    /// From-scratch count of distinct perimeter sites (debug aid).
+    fn fresh_per_count(&self) -> usize {
+        let words = (self.w * self.h + 63) / 64;
+        let mut vis = vec![0u64; words];
+        let w = self.w as i64;
+        let mut cnt = 0usize;
+        for &c in &self.cells {
+            let p = c as i64;
+            for d in [1, -1, w, -w] {
+                let q = (p + d) as usize;
+                if !self.occ(q as u32) && vis[q >> 6] >> (q & 63) & 1 == 0 {
+                    vis[q >> 6] |= 1 << (q & 63);
+                    cnt += 1;
+                }
+            }
+        }
+        cnt
     }
 
     /// Obviously-correct bridge reference: full BFS from u avoiding the
@@ -1516,10 +1547,48 @@ fn main() {
             });
             let t0 = std::time::Instant::now();
             let mut done: u64 = 0;
+            let percheck_from: u64 = get(&args, "percheck-from", 0);
+            let mut prev_cells: Vec<u32> = Vec::new();
+            let mut prev_geom = (0usize, 0usize, 0i64, 0i64, 0u64);
             while done < steps {
                 let chunk = record_every.min(steps - done);
-                for _ in 0..chunk {
-                    st.step_mixed3(&mut rng, cp_inv, pv_inv);
+                for i in 0..chunk {
+                    let instr = percheck_from > 0 && done + i + 1 >= percheck_from;
+                    if instr {
+                        prev_cells.clear();
+                        prev_cells.extend_from_slice(&st.cells);
+                        prev_geom = (st.w, st.h, st.shift_x, st.shift_y, st.n_rebuild);
+                    }
+                    let moved = st.step_mixed3(&mut rng, cp_inv, pv_inv);
+                    if instr {
+                        let fresh = st.fresh_per_count();
+                        if fresh != st.per.len() {
+                            eprintln!(
+                                "PERMISMATCH step={} kind={} moved={} per_len={} fresh={} \
+                                 rebuilds {}->{} grid {}x{}->{}x{}",
+                                done + i + 1, st.last_kind, moved, st.per.len(), fresh,
+                                prev_geom.4, st.n_rebuild, prev_geom.0, prev_geom.1,
+                                st.w, st.h,
+                            );
+                            let mut w = std::io::BufWriter::new(
+                                std::fs::File::create("percheck_prev.txt").unwrap(),
+                            );
+                            for &p in &prev_cells {
+                                let (x, y) = (p as usize % prev_geom.0, p as usize / prev_geom.0);
+                                writeln!(w, "{} {}", x as i64 - prev_geom.2, y as i64 - prev_geom.3)
+                                    .unwrap();
+                            }
+                            w.flush().unwrap();
+                            let mut w = std::io::BufWriter::new(
+                                std::fs::File::create("percheck_cur.txt").unwrap(),
+                            );
+                            for (x, y) in st.coords() {
+                                writeln!(w, "{} {}", x - st.shift_x, y - st.shift_y).unwrap();
+                            }
+                            w.flush().unwrap();
+                            std::process::exit(2);
+                        }
+                    }
                 }
                 done += chunk;
                 if let Some(w) = writer.as_mut() {
