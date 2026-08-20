@@ -247,11 +247,22 @@ controlled by b/n (b_c ~ 0.18n = 18,000 at this size), cleanly separating
 the two scaling variables.  At b=30000 (b/b_c = 1.7) the locals have just
 begun to move.  Renders: gallery/tilt_b{m3,30,1000,30000}.png.
 
-beta=0 distributions (fixed n): Rg2 is broad and right-skewed —
-relative sigma ~= 0.27, skewness ~0.8-1.5, roughly n-independent (the
-global shape mode never self-averages).  Local densities self-average:
-perimeter/cell, cycles/cell, movable fraction have relative sigma ~
-n^{-1/2} (see section 8 for the means).
+beta=0 distributions (fixed n, `python/betadist.py`, runs of 700-2000
+tau at n=1000/3000/10000): two clean classes.
+- Global shape modes, n-independent distributions: Rg2 rel-sigma
+  0.27-0.28 with skewness +1.1-1.3 (broad right tail — stretched shapes
+  are entropically favored); asphericity mean 0.37, rel-sigma 0.58-0.60.
+  These never self-average.
+- Local densities, self-averaging ~ n^{-1/2}: perim/cell rel-sigma
+  0.016 / 0.010 / 0.005 and cycles/cell 0.124 / 0.071 / 0.038 at
+  n = 1000 / 3000 / 10000; skewness ~ 0.  (The movable-fraction column
+  is measured by a k=128-cell probe, so its recorded spread ~0.041 is
+  probe-binomial noise; the true fluctuation is <~ 0.015.)
+- Means: perim/cell 1.196-1.201, cycles/cell 0.0722-0.0727, movable
+  0.293-0.295, all sizes — consistent with the section-8 constants.
+- Caveat: the n=3000 series contains the one known corrupted perimeter
+  record (section 6b; recorded 2039, true 3633 at step 26.366M), which
+  drags its perim skewness to -5.8; all other moments unaffected.
 
 ## 10. Performance summary
 

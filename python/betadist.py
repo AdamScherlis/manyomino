@@ -27,28 +27,31 @@ def moments(xs):
 
 
 def main(d):
-    files = []
-    for f in glob.glob(os.path.join(d, "n*_b0.csv")):
-        m = re.match(r"n(\d+)_b0\.csv", os.path.basename(f))
+    groups = {}
+    for f in glob.glob(os.path.join(d, "n*_b0*.csv")):
+        m = re.match(r"n(\d+)_b0(_g\d+)?\.csv", os.path.basename(f))
         if m:
-            files.append((int(m.group(1)), f))
-    files.sort()
+            groups.setdefault(int(m.group(1)), []).append(f)
+    files = sorted(groups.items())
     print(f"{'n':>6} {'obs':>10} {'mean':>12} {'stderr':>10} {'stddev':>10} "
           f"{'rel sd':>7} {'skew':>6}")
-    for n, f in files:
+    for n, fs in files:
+        rows = set()
+        for f in fs:
+            with open(f) as fh:
+                fh.readline()
+                for line in fh:
+                    p = line.rstrip().split(",")
+                    if len(p) < 6:
+                        continue
+                    try:
+                        rows.add(tuple(float(x) for x in p))
+                    except ValueError:
+                        continue
         cols = [[] for _ in range(6)]
-        with open(f) as fh:
-            fh.readline()
-            for line in fh:
-                p = line.rstrip().split(",")
-                if len(p) < 6:
-                    continue
-                try:
-                    vals = [float(x) for x in p]
-                except ValueError:
-                    continue
-                for i, v in enumerate(vals):
-                    cols[i].append(v)
+        for r in sorted(rows):
+            for i, v in enumerate(r):
+                cols[i].append(v)
         burn = int(len(cols[0]) * 0.2)
         for ci, name, scale in ((1, "Rg2", 1.0), (2, "perim/n", 1.0 / n),
                                 (3, "cyc/n", 1.0 / n), (4, "asph", 1.0),
