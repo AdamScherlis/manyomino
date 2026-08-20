@@ -12,9 +12,13 @@ def pool(paths, burn):
     rs = []
     for p in paths:
         try:
-            rs.append(analyze(p, burn))
+            r = analyze(p, burn)
         except Exception:
-            pass
+            continue
+        # skip segments too short to carry an error estimate (fresh
+        # restarts): they would divide by zero and add no information
+        if r["rg2_stderr"] > 0:
+            rs.append(r)
     if not rs:
         return None
     w = [1 / r["rg2_stderr"] ** 2 for r in rs]
