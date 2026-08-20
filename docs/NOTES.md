@@ -135,9 +135,10 @@ restored branch, leaving per = perimeter of the remainder only, ~45% of
 sites missing.  The periodic recentering rebuild heals it ~6.5k steps
 later, which is why the excursions were single records.  Fixed by
 tracking rebuilds with an explicit flag at all four (move × accept/reject)
-sites; verification: full-length replays of both affected runs with
-invariant checks every 2000 steps (perimeter set, adjacency links, edge
-count, sums, connectivity).  Event rate before the fix:
+sites; verified by full-length replays of both affected runs (25M and
+36M steps) with invariant checks every 2000 steps (perimeter set,
+adjacency links, edge count, sums, connectivity): zero failures.
+Event rate before the fix:
 ~1 per 25M steps at n=1000–3000 (needs mid-move rebuild ∧ zero shift ∧
 reject), a ~2×10⁻⁴ corrupted-sample fraction — no visible effect on any
 published average, but the proposal distribution was briefly wrong in
