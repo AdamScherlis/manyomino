@@ -3,9 +3,9 @@
 # they are not running (container restarts kill them).  Generation counter
 # in the seed keeps RNG streams distinct.
 cd "$(dirname "$0")/.."
-RUNNING=$(pgrep -fc "manyomino run" || true)
+RUNNING=$(pgrep -fc "manyomino run.*n400000" || true)
 if [ "$RUNNING" -ge 4 ]; then echo "chains alive ($RUNNING)"; exit 0; fi
-pkill -f "manyomino run" 2>/dev/null; sleep 1
+pkill -f "manyomino run.*n400000" 2>/dev/null; sleep 1
 GEN=$(date +%s)
 M=rust/target/release/manyomino
 A=$(ls -t gallery/raw/n400000_bar_*.txt | head -1)

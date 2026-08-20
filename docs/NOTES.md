@@ -142,7 +142,65 @@ from a_k ~ Cλᵏ/k^θ over k=30..180 (Klarner λ = 4.0626…, theory θ = 1);
 - asphericity ⟨(λ₁−λ₂)²/(λ₁+λ₂)²⟩ = 0.392 ± 0.022 (n=10⁵ equilibrium
   time series, 8 segments).
 
-## 9. Performance summary
+## 9. Tilted ensemble: pi(A) ~ exp(-beta R_g^2)
+
+A Metropolis factor min(1, exp(-beta*dRg2)) multiplies every (symmetric)
+kernel; dRg2 is O(1) from the maintained coordinate sums, and rejected
+moves restore state through the same production primitives used by
+acceptance (validated by chi-square against the exact reweighted
+distribution at small n, `python/validate_beta.py`).  Natural coupling:
+**b = beta * <Rg^2>_0(n)** (penalty in units of the typical fluctuation
+scale at that size).  Sweeps at n=1000 (b=-3..1000) and n=3000
+(b=-2..3000), plus renders at n=100,000; figure `results/betafig.png`,
+tables via `python/beta_analysis.py`.
+
+Three regimes:
+
+1. **Linear response, |b| <~ 1.**  d<Rg2>/db = -Var(Rg2)/<Rg2>_0 =
+   -relVar * <Rg2>_0; measured relative slope ~= -(0.27)^2 per unit b at
+   both sizes (relative sigma of Rg2 is ~0.27, n-independent).  Local
+   observables (perimeter/cell, cycles/cell, movable fraction) do not
+   move at all at this order; the entropy cost is O(1) nats *total*
+   (dS/n ~ 1/n): the tilt just re-weights the global shape mode.
+
+2. **Universal squeeze, 1 << b << 0.18n.**  <Rg2>/<Rg2>_0 collapses onto
+   a single n-independent curve ~ b^-0.2 (n=1000 and n=3000 curves lie
+   on top of each other; see figure).  Asphericity falls from 0.39
+   toward 0 (shapes round out before they densify).  Locals still
+   nearly frozen: at b=100 the perimeter density has moved only 1.19 ->
+   1.18.  Entropy cost grows ~ b^0.85 but remains subextensive until...
+
+3. **Collapse crossover at b_c ~ 0.18 n** (i.e. beta ~ 0.18n/<Rg2>_0,
+   where the penalty starts competing with the *per-cell* free energy).
+   Locals finally move: at n=1000, b=1000: perimeter/cell 1.199 ->
+   1.058, cycles/cell 0.073 -> 0.099 (+37%), movable fraction 0.295 ->
+   0.364, asphericity -> 0.008 (near-disk).  Entropy cost becomes
+   extensive: dS/n ~= -0.076 nats/cell at (n=1000, b=1000), -0.081 at
+   (n=3000, b=3000) — consistent with a common collapse branch as a
+   function of b/n.  The animal is turning into a dense droplet: fewer
+   perimeter sites, more cycles, and (counterintuitively) *more* movable
+   cells, because compact bulk means fewer cut vertices than the
+   branched-polymer phase.
+
+   Negative beta (reward large Rg2) at b=-3 stretches Rg2 by 1.33x and
+   raises asphericity 0.37 -> 0.55 (elongation), locals again frozen.
+   The negative branch has no thermodynamic limit (logZ diverges as
+   stretched configurations proliferate), so only small |b| is
+   meaningful there.
+
+Entropy via thermodynamic integration: d logZ/d beta = -<Rg^2>_beta,
+integrated over the sweep grid (trapezoid), S(beta) - S(0) = logZ +
+beta*<Rg2>_beta.  Since the beta=0 entropy per cell is log(lambda) ~=
+1.40 nats, the collapse at b ~ 0.18n has burned ~5% of the animal's
+entropy at the deepest points sampled.
+
+beta=0 distributions (fixed n): Rg2 is broad and right-skewed —
+relative sigma ~= 0.27, skewness ~0.8-1.5, roughly n-independent (the
+global shape mode never self-averages).  Local densities self-average:
+perimeter/cell, cycles/cell, movable fraction have relative sigma ~
+n^{-1/2} (see section 8 for the means).
+
+## 10. Performance summary
 
 - mixed kernel, equilibrium: ~2.5×10⁵ moves/s (n=10³), ~5×10⁴ (n=10⁴),
   ~3×10⁴ (n=10⁵) on one core; cost ~ 40ns · 2√n per move.
