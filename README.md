@@ -105,6 +105,7 @@ proposal is accepted.
 | two-seed, n=30000 | \|z\| = 0.61, PASS |
 | n=100,000: 12 pooled chain segments by lineage, PDG-inflated errors | \|z\| = 2.87 then 1.84 (consecutive), pooled ESS 136/122, PASS |
 | n=100,000 local observables across all segments | perimeter/cell 1.1946–1.1965, cycles/cell 0.0725–0.0730, no lineage grouping |
+| perimeter band-scan of all series → rare corruption bug found (rejected cut-and-paste + zero-shift mid-move rebuild skipped the perimeter repair; ~1 event/25M steps) | fixed; verification: full-length invariant-checked replays of both affected runs (`docs/NOTES.md` §6b) |
 
 Measured autocorrelation time, single-cell kernel: τ ≈ 0.3 · n^2.2 moves.
 The mixed kernel (33% cut-and-paste branch moves, see below) collapses this:

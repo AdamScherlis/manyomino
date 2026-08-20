@@ -112,6 +112,41 @@ the predecessor).  For both transitions:
   direction; realized P(A→A′) and P(A′→A) equal to each other and to
   1/(n|P|) within Poisson errors.
 
+## 6b. A rare perimeter-corruption bug, found and fixed via the time series
+
+The only correctness bug found after production began, worth recording for
+its detection story.  Scanning every recorded time series for out-of-band
+perimeter values turned up exactly two single-record excursions to
+perim/n ≈ 0.68 (n=1000 b=0.3 step 6.978M; n=3000 b=0 step 26.366M), each
+with a simultaneous R_g² spike and an asphericity ≈ 0.0155 record
+immediately after — too similar to be fluctuations.  Because every run
+logs its seed and the chain is deterministic, the exact states could be
+replayed: `--dump-final` at the anomalous step showed the *actual* shape
+was a normal branched polymer whose true perimeter (1188 sites at n=1000)
+disagreed with the maintained set (685) — state corruption, not physics.
+A per-step verification mode (`--percheck-from`) then pinpointed the
+corrupting move: a **rejected cut-and-paste whose mid-move grid rebuild
+returned shift = (0,0)**.  The code inferred "a rebuild happened" from
+shift ≠ (0,0), but a rebuild can legitimately land on a zero shift (new
+margin equal to the old bbox offset in both axes, needs a long branch
+poking the border while the remainder sits deep inside — hence the R_g²
+spike); the reject path then skipped the perimeter repair around the
+restored branch, leaving per = perimeter of the remainder only, ~45% of
+sites missing.  The periodic recentering rebuild heals it ~6.5k steps
+later, which is why the excursions were single records.  Fixed by
+tracking rebuilds with an explicit flag at all four (move × accept/reject)
+sites; verification: full-length replays of both affected runs with
+invariant checks every 2000 steps (perimeter set, adjacency links, edge
+count, sums, connectivity).  Event rate before the fix:
+~1 per 25M steps at n=1000–3000 (needs mid-move rebuild ∧ zero shift ∧
+reject), a ~2×10⁻⁴ corrupted-sample fraction — no visible effect on any
+published average, but the proposal distribution was briefly wrong in
+those windows.
+
+Moral: record cheap redundant observables (perimeter, cycles) in every
+production run and band-scan them; log seeds so any anomaly is exactly
+replayable.
+
 ## 7. PERM (independent non-MCMC cross-check)
 
 Leath-style growth with deterministic FIFO discovery order: each candidate
