@@ -139,8 +139,8 @@ from a_k ~ Cλᵏ/k^θ over k=30..180 (Klarner λ = 4.0626…, theory θ = 1);
 - amplitude: ⟨R_g⟩ ≈ 0.422·n^0.6436.
 - λ = 4.058 (PERM; exact 4.0626…), θ ≈ 0.93 (theory 1).
 - cycle density → 0.073 per cell; perimeter density → 1.195 per cell.
-- asphericity ⟨(λ₁−λ₂)²/(λ₁+λ₂)²⟩ ≈ 0.35–0.42 (few-sample; the asph
-  column in newer time series will sharpen this).
+- asphericity ⟨(λ₁−λ₂)²/(λ₁+λ₂)²⟩ = 0.392 ± 0.022 (n=10⁵ equilibrium
+  time series, 8 segments).
 
 ## 9. Performance summary
 

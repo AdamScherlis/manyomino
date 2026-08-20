@@ -18,6 +18,7 @@ def collect():
         (5000, ["../results/prod/n5000_bar.csv", "../results/prod/n5000_rect.csv"]),
         (10000, ["../results/prod/n10000_bar.csv", "../results/prod/n10000_rect.csv"]),
         (30000, ["../results/prod/n30000_bar.csv", "../results/prod/n30000_rect.csv"]),
+        (100000, sorted(__import__("glob").glob("../results/prod/n100000_*.csv"))),
     ]
     pts = []
     for n, paths in groups:

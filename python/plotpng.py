@@ -86,8 +86,8 @@ def main(out):
     a, nu, snu = wls_fit(pts)
     W, H = 960, 640
     L, R, T, B = 90, 30, 40, 70
-    x0, x1 = math.log10(70), math.log10(150000)
-    y0, y1 = math.log10(6), math.log10(500)
+    x0, x1 = math.log10(70), math.log10(400000)
+    y0, y1 = math.log10(6), math.log10(1100)
     X = lambda n: L + (math.log10(n) - x0) / (x1 - x0) * (W - L - R)
     Y = lambda v: H - B - (math.log10(v) - y0) / (y1 - y0) * (H - T - B)
     cv = Canvas(W, H)
@@ -95,14 +95,14 @@ def main(out):
     for e in range(2, 6):
         cv.line(X(10**e), T, X(10**e), H - B, GRID)
         cv.text(X(10**e) - 18, H - B + 12, f"10^{e}", INK)
-    for e in (1, 2):
+    for e in (1, 2, 3):
         cv.line(L, Y(10**e), W - R, Y(10**e), GRID)
         cv.text(L - 52, Y(10**e) - 7, f"10^{e}", INK)
     # frame
     cv.line(L, H - B, W - R, H - B, INK)
     cv.line(L, T, L, H - B, INK)
     # fit line clipped to plot
-    nlo, nhi = 80, 52000
+    nlo, nhi = 80, 220000
     cv.line(X(nlo), Y(math.exp(a) * nlo**nu), X(nhi), Y(math.exp(a) * nhi**nu), ACC, 2)
     for n, m, se in pts:
         cv.line(X(n), Y(m - 2 * se), X(n), Y(m + 2 * se), PT, 2)

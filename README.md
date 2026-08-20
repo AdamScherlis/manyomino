@@ -97,7 +97,7 @@ proposal is accepted.
 | leaf-to-gap probe: largest almost-cycle (156/108 cells) in n=10⁴ snapshots | legal, probability (1/n)(1/\|P\|), invariants pass |
 | detailed balance on captured cycle-seal/breach transitions (n=10⁴) | exact: \|P\| identical both ways; implementation audit: removability boundary exhaustive 0 mismatches, perimeter set == from-scratch, destination uniform (p=0.11–0.83) |
 | end-to-end P(A→A′) vs P(A′→A), 1.2×10¹² unmodified-step trials each | seal: 10099 vs 10047 hits (z=+0.4); breach: 9840 vs 10118 (z=−2.0); all four consistent with exact 1/(n\|P\|) |
-| ν fit, n = 100..30000 | 0.6436 ± 0.0010 stat ± 0.001 sys (corrections-to-scaling scan Δ=0.5..1.5: ν=0.6436–0.6447; expect ≈ 0.6408) |
+| ν fit, n = 100..100000 | 0.6441 ± 0.0008 stat; previously 0.6436 ± 0.0010 stat ± 0.001 sys (corrections-to-scaling scan Δ=0.5..1.5: ν=0.6436–0.6447; expect ≈ 0.6408) |
 | PERM (independent non-MCMC sampler): a₁..a₁₀ vs A001168 | within ~0.5% statistical |
 | PERM λ̂ | ≈ 4.01–4.08 (Klarner 4.0626) |
 | PERM ⟨R_g²⟩ vs MCMC: n=10 (exact) / 100 / 300 / 1000 | 3.1794±27 vs 3.1801 exact; z = 1.0 / 0.4 / pooled 1380±37 vs 1339–1382 |
