@@ -16,8 +16,9 @@ def pool(paths, burn):
         except Exception:
             continue
         # skip segments too short to carry an error estimate (fresh
-        # restarts): they would divide by zero and add no information
-        if r["rg2_stderr"] > 0:
+        # restarts, zero stderr) and frozen segments (ESS < 5): a barely-
+        # moving chain reports a tiny stderr and would dominate the pool
+        if r["rg2_stderr"] > 0 and r["ess"] >= 5:
             rs.append(r)
     if not rs:
         return None
