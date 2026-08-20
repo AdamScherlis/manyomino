@@ -119,6 +119,11 @@ struct State {
     shift_y: i64,
     /// number of adjacent occupied pairs (edges); cycles = E - n + 1
     e_edges: u64,
+    /// R_g^2 tilt: target pi(A) ~ exp(-beta * Rg^2); 0 = uniform.
+    /// Proposals are symmetric, so a Metropolis factor min(1, e^(-beta dRg2))
+    /// on every move type samples the tilted ensemble exactly.
+    beta: f64,
+    n_beta_reject: u64,
     /// bridge-test node cap per front (0 = uncapped); give-up is symmetric:
     /// on any acceptable move the forward and reverse tests resolve at the
     /// same per-front pop counts (min(|B|,|R|)), so capping cannot break
@@ -218,6 +223,8 @@ impl State {
             cp_cap: 0,
             n_cp_capped: 0,
             e_edges: 0,
+            beta: 0.0,
+            n_beta_reject: 0,
         };
         for (x, y) in pts {
             st.add_cell(((y + my) * w + x + mx) as u32);
@@ -748,9 +755,30 @@ impl State {
                 }
             }
         }
-        if !ok || contacts != 1 {
+        let mut beta_ok = true;
+        if ok && contacts == 1 && self.beta != 0.0 {
+            let nn = self.cells.len() as f64 + gb.len() as f64;
+            let (mut px, mut py, mut px2, mut py2) = (0i64, 0i64, 0i64, 0i64);
+            for &(bx, by) in &gb {
+                let (x, y) = (tx + bx, ty + by);
+                px += x; py += y; px2 += x * x; py2 += y * y;
+            }
+            let r_new = self.rg2_with(px, py, px2, py2, nn);
+            let (mut qx, mut qy, mut qx2, mut qy2) = (0i64, 0i64, 0i64, 0i64);
+            for &p in &bpos {
+                let (x, y) = ((p as i64 % w0) + shift.0, (p as i64 / w0) + shift.1);
+                qx += x; qy += y; qx2 += x * x; qy2 += y * y;
+            }
+            let r_old = self.rg2_with(qx, qy, qx2, qy2, nn);
+            beta_ok = self.beta_accept(rng, r_new - r_old);
+        }
+        if !ok || contacts != 1 || !beta_ok {
             // reject: restore B at its original spot (shifted if rebuilt)
-            self.n_cp_invalid += 1;
+            if ok && contacts == 1 {
+                // rejected only by the tilt; counted in n_beta_reject
+            } else {
+                self.n_cp_invalid += 1;
+            }
             let rebuilt = shift != (0, 0);
             let mut restored: Vec<u32> = Vec::with_capacity(bpos.len());
             for &p in &bpos {
@@ -866,8 +894,27 @@ impl State {
                 }
             }
         }
-        if !ok || contacts != 1 {
-            self.n_cp_invalid += 1;
+        let mut beta_ok = true;
+        if ok && contacts == 1 && self.beta != 0.0 {
+            let nn = self.cells.len() as f64 + gb.len() as f64;
+            let (mut px, mut py, mut px2, mut py2) = (0i64, 0i64, 0i64, 0i64);
+            for &(bx, by) in &gb {
+                let (x, y) = (tx + bx, ty + by);
+                px += x; py += y; px2 += x * x; py2 += y * y;
+            }
+            let r_new = self.rg2_with(px, py, px2, py2, nn);
+            let (mut qx, mut qy, mut qx2, mut qy2) = (0i64, 0i64, 0i64, 0i64);
+            for &p in &bpos {
+                let (x, y) = ((p as i64 % w0) + shift.0, (p as i64 / w0) + shift.1);
+                qx += x; qy += y; qx2 += x * x; qy2 += y * y;
+            }
+            let r_old = self.rg2_with(qx, qy, qx2, qy2, nn);
+            beta_ok = self.beta_accept(rng, r_new - r_old);
+        }
+        if !ok || contacts != 1 || !beta_ok {
+            if !(ok && contacts == 1) {
+                self.n_cp_invalid += 1;
+            }
             let rebuilt = shift != (0, 0);
             let mut restored: Vec<u32> = Vec::with_capacity(bpos.len());
             for &p in &bpos {
@@ -1047,6 +1094,27 @@ impl State {
         }
         // sample the new site uniformly over perimeter *sites* (s = c legal)
         let s = self.per[rng.below(self.per.len() as u64) as usize];
+        if self.beta != 0.0 && s != c {
+            // O(1) delta: sums currently exclude c; compare adding s vs c
+            let nn = n as f64;
+            let (sx_, sy_) = ((s as usize % self.w) as i64, (s as usize / self.w) as i64);
+            let (cx_, cy_) = ((c as usize % self.w) as i64, (c as usize / self.w) as i64);
+            let r_new = self.rg2_with(sx_, sy_, sx_ * sx_, sy_ * sy_, nn);
+            let r_old = self.rg2_with(cx_, cy_, cx_ * cx_, cy_ * cy_, nn);
+            if !self.beta_accept(rng, r_new - r_old) {
+                // restore c via the production placement path (stay put)
+                self.per_remove(c);
+                self.add_cell(c);
+                let w = self.w as i64;
+                for d in [1, -1, w, -w] {
+                    let q = (c as i64 + d) as u32;
+                    if !self.occ(q) && self.per_idx[q as usize] == 0 {
+                        self.per_add(q);
+                    }
+                }
+                return None;
+            }
+        }
         self.per_remove(s);
         self.add_cell(s);
         for d in [1, -1, w, -w] {
@@ -1117,6 +1185,46 @@ impl State {
         self.shift_x += sh.0;
         self.shift_y += sh.1;
         sh
+    }
+
+    /// Rg^2 if the current sums were changed by (dx_sum, dy_sum, dx2, dy2)
+    #[inline(always)]
+    fn rg2_with(&self, dsx: i64, dsy: i64, dsx2: i64, dsy2: i64, n: f64) -> f64 {
+        let sx = (self.sx + dsx) as f64;
+        let sy = (self.sy + dsy) as f64;
+        (self.sx2 + dsx2 + self.sy2 + dsy2) as f64 / n - (sx / n).powi(2) - (sy / n).powi(2)
+    }
+
+    /// Metropolis accept for moving the tilted target: min(1, e^(-beta dR))
+    #[inline(always)]
+    fn beta_accept(&mut self, rng: &mut Rng, d_rg2: f64) -> bool {
+        if self.beta == 0.0 {
+            return true;
+        }
+        let arg = -self.beta * d_rg2;
+        if arg >= 0.0 {
+            return true;
+        }
+        let u = (rng.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64);
+        if u < arg.exp() {
+            true
+        } else {
+            self.n_beta_reject += 1;
+            false
+        }
+    }
+
+    /// unbiased estimate of the movable (non-cut) cell fraction under the
+    /// current state: K random removability tests (no state change)
+    fn movable_fraction(&mut self, rng: &mut Rng, k: usize) -> f64 {
+        let n = self.cells.len();
+        let mut ok = 0;
+        for _ in 0..k {
+            if self.removable(rng.below(n as u64) as usize) {
+                ok += 1;
+            }
+        }
+        ok as f64 / k as f64
     }
 
     /// asphericity (l1-l2)^2/(l1+l2)^2 of the gyration tensor
@@ -1359,6 +1467,7 @@ fn main() {
             let pv_inv: u64 = get(&args, "pv-inv", 0);
             let mut st = State::new(n, &init);
             st.cp_cap = get(&args, "cp-cap", 4000);
+            st.beta = get(&args, "beta", 0.0);
             for _ in 0..burn {
                 st.step_mixed3(&mut rng, cp_inv, pv_inv);
             }
@@ -1396,12 +1505,13 @@ fn main() {
                 None => State::new(n, &init),
             };
             st.cp_cap = get(&args, "cp-cap", 4000);
+            st.beta = get(&args, "beta", 0.0);
             let n = st.cells.len();
             st.check_invariants(n);
             let mut writer = out_path.map(|p| {
                 let f = std::fs::File::create(p).expect("create out");
                 let mut w = std::io::BufWriter::new(f);
-                writeln!(w, "step,rg2,perim,cycles,asph").unwrap();
+                writeln!(w, "step,rg2,perim,cycles,asph,movfrac").unwrap();
                 w
             });
             let t0 = std::time::Instant::now();
@@ -1414,14 +1524,16 @@ fn main() {
                 done += chunk;
                 if let Some(w) = writer.as_mut() {
                     let cyc = st.e_edges as i64 - st.cells.len() as i64 + 1;
+                    let mf = st.movable_fraction(&mut rng, 128);
                     writeln!(
                         w,
-                        "{},{:.6},{},{},{:.6}",
+                        "{},{:.6},{},{},{:.6},{:.4}",
                         done,
                         st.rg2(),
                         st.per.len(),
                         cyc,
-                        st.asphericity()
+                        st.asphericity(),
+                        mf
                     )
                     .unwrap();
                 }
