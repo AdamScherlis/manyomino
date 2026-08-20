@@ -230,6 +230,23 @@ beta*<Rg2>_beta.  Since the beta=0 entropy per cell is log(lambda) ~=
 1.40 nats, the collapse at b ~ 0.18n has burned ~5% of the animal's
 entropy at the deepest points sampled.
 
+n=100,000 renders (four chains, 120M steps each from an equilibrated
+beta=0 snapshot; equilibrated stats over the last 60M):
+
+|    b   |   beta    | Rg2/Rg2_0 | perim/n | cyc/n  |  asph | movable |
+|--------|-----------|-----------|---------|--------|-------|---------|
+|   -3   | -6.3e-6   | 1.41±0.09 | 1.1954  | 0.0726 | 0.545 | 0.2950  |
+|   30   |  6.3e-5   | 0.551     | 1.1948  | 0.0730 | 0.083 | 0.2958  |
+|  1000  |  2.1e-3   | 0.273     | 1.1934  | 0.0730 | 0.006 | 0.2941  |
+| 30000  |  6.3e-2   | 0.140     | 1.1785  | 0.0754 | 0.003 | 0.3031  |
+
+b=30 reproduces the n=1000 ratio (0.5455) at 100x the size — the squeeze
+curve collapses in b alone.  The locals stay frozen at b=1000 here even
+though the same b collapsed them at n=1000: local densification is
+controlled by b/n (b_c ~ 0.18n = 18,000 at this size), cleanly separating
+the two scaling variables.  At b=30000 (b/b_c = 1.7) the locals have just
+begun to move.  Renders: gallery/tilt_b{m3,30,1000,30000}.png.
+
 beta=0 distributions (fixed n): Rg2 is broad and right-skewed —
 relative sigma ~= 0.27, skewness ~0.8-1.5, roughly n-independent (the
 global shape mode never self-averages).  Local densities self-average:
