@@ -1,0 +1,2 @@
+n=1000 init=bar seed=1431845 secs=91.3 moves_per_sec=2.738e5
+steps=24997432 moved=0.0985 noop=0.0001 cut_reject=0.2349 leaf=0.0678 ring=0.0435 bfs=0.2862 bfs_nodes_per_step=77.45 rebuilds=3087 cp[accept=793623 invalid=2489782 notbridge=2360632 toobig=3284991 nopair=7732771 capped=0]
