@@ -15,6 +15,7 @@ where <site_dir> is the checkout of adamscherlis.github.io.
 import glob
 import math
 import os
+import shutil
 import re
 import subprocess
 import sys
@@ -192,6 +193,47 @@ def build(site_dir, max_per_n=4):
         )
 
     stamp = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
+    # tilted-ensemble section (only if the renders have been produced)
+    tilt_specs = [
+        ("m3", "b = &minus;3", "&beta; &lt; 0 rewards size: &lang;R<sub>g</sub>&sup2;&rang; up 1.4&times;, stretched (asphericity 0.55)"),
+        ("30", "b = 30", "R<sub>g</sub>&sup2; squeezed to 0.55&times; &mdash; same ratio as at n = 1000: the squeeze curve is universal in b"),
+        ("1000", "b = 1000", "0.27&times;, nearly round (asphericity 0.006) &mdash; but locally still a branched polymer"),
+        ("30000", "b = 30000", "past the collapse crossover b<sub>c</sub> &asymp; 0.18n: 0.14&times; and the local structure begins to densify"),
+    ]
+    tilt_cards = []
+    for tag, label, desc in tilt_specs:
+        src = os.path.join(ROOT, "gallery", f"tilt_b{tag}.png")
+        if not os.path.exists(src):
+            continue
+        shutil.copy(src, os.path.join(figdir, f"tilt_b{tag}.png"))
+        tilt_cards.append(
+            f'<figure style="margin:0"><img style="width:100%;height:auto;display:block;'
+            f'image-rendering:pixelated" src="figs/tilt_b{tag}.png" alt="tilted polyomino sample {label}">'
+            f'<figcaption style="font-size:.78em;color:var(--mut);margin-top:.3rem">'
+            f"<b>{label}</b> &mdash; {desc}</figcaption></figure>"
+        )
+    tilt_html = ""
+    if len(tilt_cards) == 4:
+        bf = os.path.join(ROOT, "results", "betafig.png")
+        bf_html = ""
+        if os.path.exists(bf):
+            shutil.copy(bf, os.path.join(figdir, "betafig.png"))
+            bf_html = ('<figure style="max-width:44rem;background:#fff;border:1px solid var(--rule);'
+                       'border-radius:8px;padding:.5rem"><img style="width:100%;height:auto;display:block" '
+                       'src="figs/betafig.png" alt="response curves of the tilted ensemble"></figure>')
+        tilt_html = f"""<section class="card">
+<h2>Bonus: tilting the ensemble</h2>
+<p class="sub">Reweighting by exp(&minus;&beta;R<sub>g</sub>&sup2;) and sampling with the same
+(Metropolis-corrected) chain.  b = &beta;&middot;&lang;R<sub>g</sub>&sup2;&rang;&#8320; is the
+dimensionless coupling; each sample below is n = 100,000 after 120M steps.  Weak coupling
+squeezes the global shape along a universal curve while the local branched-polymer texture
+stays frozen; only at b ~ 0.18n does the animal begin to collapse into a dense droplet.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.8rem">
+{''.join(tilt_cards)}
+</div>
+{bf_html}
+</section>"""
+
     html = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -231,6 +273,7 @@ independent cycles and &asymp;1.195 perimeter sites per cell.</p>
 <figure style="max-width:40rem;background:#fff;border:1px solid var(--rule);border-radius:8px;padding:.5rem"><img style="width:100%;height:auto;display:block" src="figs/nufit.png" alt="log-log plot of radius of gyration vs size with nu fit"></figure>
 </section>
 {''.join(cards)}
+{tilt_html}
 {pend_html}
 <footer>Generated {stamp} from the manyomino production runs.</footer>
 </div>
