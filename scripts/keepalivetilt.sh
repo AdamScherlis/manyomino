@@ -26,7 +26,7 @@ for b in 30 30000 -3 1000; do
   nohup $M run --init-file "$init" --steps $rem --step-offset $base \
     --record-every 100000 --seed 17$((GEN % 10000)) --cp-inv 3 --pv-inv 2 \
     --cp-cap 0 --beta $beta --out results/beta/n100000_b${tag}_g$GEN.csv \
-    --dump-every 5000000 --dump-prefix gallery/raw/tilt_b$tag \
+    --dump-every 1000000 --dump-prefix gallery/raw/tilt_b$tag \
     >/dev/null 2>results/beta/n100000_b${tag}_g$GEN.log &
   disown
   GEN=$((GEN + 1))
@@ -47,7 +47,7 @@ if ! pgrep -f "manyomino run.*n10000_b0" >/dev/null; then
     nohup nice -n 5 $M run --init-file "$init" --steps $rem --step-offset $base \
       --record-every 5000 --seed 18$((GEN % 10000)) --cp-inv 3 --pv-inv 2 \
       --cp-cap 0 --beta 0 --out results/beta/n10000_b0_g$GEN.csv \
-      --dump-every 10000000 --dump-prefix gallery/raw/n10000b0 \
+      --dump-every 2000000 --dump-prefix gallery/raw/n10000b0 \
       >/dev/null 2>results/beta/n10000_b0_g$GEN.log &
     disown
   fi
