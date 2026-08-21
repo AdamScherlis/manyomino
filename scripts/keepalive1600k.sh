@@ -16,9 +16,13 @@ for TAG in bar rect; do
     --seed $((GEN + $([ "$TAG" = bar ] && echo 1 || echo 2))) \
     --cp-inv 3 --pv-inv 2 --cp-cap 0 \
     --out results/prod/n1600000_${TAG}_g$GEN.csv \
-    --dump-every 5000000 --dump-prefix gallery/raw/n1600000_${TAG} \
+    --dump-every 1000000 --dump-prefix gallery/raw/n1600000_${TAG} \
     >/dev/null 2>results/prod/n1600000_${TAG}_g$GEN.log &
   disown
 done
 sleep 1
 echo "1.6M: $(pgrep -fc 'manyomino ru[n].*n1600000') running"
+# prune old dumps (keep newest 3 per lineage; each is ~20MB)
+for TAG in bar rect; do
+  ls -t gallery/raw/n1600000_${TAG}_*.txt 2>/dev/null | tail -n +4 | xargs -r rm -f
+done
