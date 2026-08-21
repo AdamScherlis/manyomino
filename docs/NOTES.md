@@ -230,6 +230,25 @@ beta*<Rg2>_beta.  Since the beta=0 entropy per cell is log(lambda) ~=
 1.40 nats, the collapse at b ~ 0.18n has burned ~5% of the animal's
 entropy at the deepest points sampled.
 
+**Deep negative branch (stretch transition).**  Extending the n=1000
+sweep to b=-30 and n=3000 to b=-10 (annealed: each run seeded from the
+previous, less-negative endpoint) reveals a sharp stretching crossover
+near b* ~ -8 +/- 2 at both sizes: <Rg2>/<Rg2>_0 = 1.33 (b=-3), 2.1 (-5),
+4.6 (-8), 12.5 (-12), 31 (-20), 47.6 (-30, i.e. 79% of the perfect-bar
+value n^2/12).  Through the crossover the animal pays with nearly all of
+its entropy: S/n (absolute, anchored at S(0)/n = ln(lambda) - ln(n)/n =
+1.394 for n=1000) falls 1.394 -> 1.29 (-12) -> 1.00 (-20) -> 0.58 (-30),
+i.e. at b=-30 the ensemble has burned ~60% of its entropy to become a
+near-bar (asphericity 0.999, perimeter/cell 1.70 -> approaching the bar
+limit 2, cycles/cell 0.0145, movable fraction 0.093).  In contrast the
+positive branch keeps S/n within 0.01 of the maximum all the way to
+b=+30.  The two sides are asymmetric in scaling: the negative-side
+stretch happens at b* = O(10) roughly independent of n (both sizes knee
+between -5 and -12), while the positive-side collapse needs b ~ 0.18n.
+Linear-in-b figure with absolute entropy: `results/betalin.png`
+(`python/betalin.py`); deep-negative caveat: one annealed chain per
+point, so hysteresis in the transition region is not excluded.
+
 n=100,000 renders (four chains, 120M steps each from an equilibrated
 beta=0 snapshot; equilibrated stats over the last 60M):
 

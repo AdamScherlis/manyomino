@@ -216,11 +216,14 @@ def build(site_dir, max_per_n=4):
     if len(tilt_cards) == 4:
         bf = os.path.join(ROOT, "results", "betafig.png")
         bf_html = ""
-        if os.path.exists(bf):
-            shutil.copy(bf, os.path.join(figdir, "betafig.png"))
-            bf_html = ('<figure style="max-width:44rem;background:#fff;border:1px solid var(--rule);'
-                       'border-radius:8px;padding:.5rem"><img style="width:100%;height:auto;display:block" '
-                       'src="figs/betafig.png" alt="response curves of the tilted ensemble"></figure>')
+        for name, alt in (("betafig.png", "response curves of the tilted ensemble"),
+                          ("betalin.png", "linear-scale response with the deep-negative stretch branch")):
+            f = os.path.join(ROOT, "results", name)
+            if os.path.exists(f):
+                shutil.copy(f, os.path.join(figdir, name))
+                bf_html += ('<figure style="max-width:44rem;background:#fff;border:1px solid var(--rule);'
+                            f'border-radius:8px;padding:.5rem;margin-top:.8rem"><img style="width:100%;height:auto;display:block" '
+                            f'src="figs/{name}" alt="{alt}"></figure>')
         tilt_html = f"""<section class="card">
 <h2>Bonus: tilting the ensemble</h2>
 <p class="sub">Reweighting by exp(&minus;&beta;R<sub>g</sub>&sup2;) and sampling with the same
