@@ -10,8 +10,8 @@ python3 python/inflate.py "$BAR_SRC" gallery/raw/n1600000_seedA.txt
 python3 python/inflate.py "$RECT_SRC" gallery/raw/n1600000_seedB.txt
 cd rust
 M=./target/release/manyomino
-nohup $M run --init-file ../gallery/raw/n1600000_seedA.txt --steps 300000000 --record-every 100000 --seed 901 --cp-inv 3 --cp-cap 4000 --out ../results/prod/n1600000_bar.csv --dump-every 30000000 --dump-prefix ../gallery/raw/n1600000_bar --check-every 200000000 >/dev/null 2>../results/prod/n1600000_bar.log &
+nohup $M run --init-file ../gallery/raw/n1600000_seedA.txt --steps 300000000 --record-every 100000 --seed 901 --cp-inv 3 --pv-inv 2 --cp-cap 0 --out ../results/prod/n1600000_bar.csv --dump-every 5000000 --dump-prefix ../gallery/raw/n1600000_bar --check-every 200000000 >/dev/null 2>../results/prod/n1600000_bar.log &
 disown
-nohup $M run --init-file ../gallery/raw/n1600000_seedB.txt --steps 300000000 --record-every 100000 --seed 902 --cp-inv 3 --cp-cap 4000 --out ../results/prod/n1600000_rect.csv --dump-every 30000000 --dump-prefix ../gallery/raw/n1600000_rect --check-every 200000000 >/dev/null 2>../results/prod/n1600000_rect.log &
+nohup $M run --init-file ../gallery/raw/n1600000_seedB.txt --steps 300000000 --record-every 100000 --seed 902 --cp-inv 3 --pv-inv 2 --cp-cap 0 --out ../results/prod/n1600000_rect.csv --dump-every 5000000 --dump-prefix ../gallery/raw/n1600000_rect --check-every 200000000 >/dev/null 2>../results/prod/n1600000_rect.log &
 disown
 echo "1.6M pair launched"
