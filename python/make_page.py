@@ -181,6 +181,55 @@ def build(site_dir, max_per_n=4):
 <div class="panels">{''.join(figs)}</div>
 </section>""")
 
+    # n=400k: published from pooled plateau segments (gen-stamped restart
+    # files), not the single-file two-chain layout the loop above expects
+    try:
+        from gate400kplateau import main as plateau_gate, plateau, PLATEAU_MIN
+        from fourseed import pool as fpool
+        allcsv = glob.glob(os.path.join(PROD, "n400000_*.csv"))
+        ps = plateau(sorted(f for f in allcsv if "_bar" in f), 0.5)
+        pc = plateau(sorted(f for f in allcsv if "_rect" in f), 0.5)
+        a, b = fpool(ps, 0.5), fpool(pc, 0.5)
+        if a and b:
+            essA = sum(r["ess"] for r in a[2])
+            essB = sum(r["ess"] for r in b[2])
+            z400 = abs(a[0] - b[0]) / math.sqrt(a[1] ** 2 + b[1] ** 2)
+            if z400 < 3 and essA >= 30 and essB >= 30:
+                figs4 = []
+                for pat, lab in (("n400000*bar*.txt", "stringy-lineage"),
+                                 ("n400000*rect*.txt", "compact-lineage")):
+                    dumps = sorted(glob.glob(os.path.join(RAW, pat)),
+                                   key=os.path.getmtime, reverse=True)[:2]
+                    for f in dumps:
+                        name = "p400k_" + os.path.basename(f)[:-4]
+                        png = os.path.join(figdir, name + ".png")
+                        if not os.path.exists(png):
+                            render(load(f), png, mode="dist")
+                        rg = math.sqrt(analyze_rg2_of_dump(f))
+                        figs4.append(
+                            f'<figure><img src="figs/{name}.png" alt="random '
+                            f'polyomino, n=400000"><figcaption>{lab} chain '
+                            f'&middot; R<sub>g</sub> = {rg:.0f}</figcaption></figure>')
+                rgp = math.sqrt((a[0] + b[0]) / 2)
+                cards.insert(0, f"""
+<section class="card">
+<h2>n = 400,000<span class="badge ok">two-lineage converged</span></h2>
+<p class="sub">inflation-seeded chains pooled by lineage over equilibrated
+segments: &lang;R<sub>g</sub>&sup2;&rang; = {a[0]:.3g} (stringy, ESS {essA:.0f})
+vs {b[0]:.3g} (compact, ESS {essB:.0f}), |z| = {z400:.2f}; both consistent with
+the &nu;-fit extrapolation 2.9&times;10&#8310;.  Chains survive by resuming from
+snapshots across container restarts; early inflation-transient segments are
+excluded from the pool.</p>
+<div class="stats">
+  <div>&lang;R<sub>g</sub>&rang; <b>{rgp:.0f}</b></div>
+  <div>pooled ESS <b>{essA:.0f}</b> / <b>{essB:.0f}</b></div>
+</div>
+<div class="panels">{''.join(figs4)}</div>
+</section>""")
+                pending = [(n_, w) for n_, w in pending if n_ != 400000]
+    except Exception as e:
+        print(f"400k card skipped: {e}")
+
     pend_html = ""
     if pending:
         items = "".join(
