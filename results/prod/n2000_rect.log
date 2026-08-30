@@ -1,0 +1,2 @@
+n=2000 init=rect seed=104 secs=4719.4 moves_per_sec=1.271e5
+steps=600000000 moved=0.2947 noop=0.0001 cut_reject=0.7051 leaf=0.1699 ring=0.1092 bfs=0.7209 bfs_nodes_per_step=159.59 rebuilds=40

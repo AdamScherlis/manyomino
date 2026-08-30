@@ -1,0 +1,1 @@
+trials=1200000000000 cell_hits=120010067 (expect ~120000000) transition_hits=9840 P_hat=8.200000e-9

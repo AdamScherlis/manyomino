@@ -1,0 +1,12 @@
+done n=1000 b=-3
+done n=1000 b=-1
+done n=1000 b=-0.3
+done n=1000 b=0.3
+done n=1000 b=1
+scripts/betasweep2.sh: line 11:  8467 Aborted                 $M run --init-file $SNAP --steps $STEPS --record-every 2000 --seed 14$RANDOM --cp-inv 3 --pv-inv 2 --cp-cap 0 --beta $beta --out results/beta/n${N}_b$tag.csv > /dev/null 2> results/beta/n${N}_b$tag.log
+done n=1000 b=3
+done n=1000 b=10
+done n=1000 b=30
+done n=1000 b=100
+done n=1000 b=300
+done n=1000 b=1000
