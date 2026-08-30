@@ -106,6 +106,7 @@ proposal is accepted.
 | n=100,000: 12 pooled chain segments by lineage, PDG-inflated errors | \|z\| = 2.87 then 1.84 (consecutive), pooled ESS 136/122, PASS |
 | n=100,000 local observables across all segments | perimeter/cell 1.1946–1.1965, cycles/cell 0.0725–0.0730, no lineage grouping |
 | n=400,000: plateau-segment pooling by lineage (inflation transients excluded, per-segment ESS≥5) | stringy 3.03e6±0.18e6 (ESS 129) vs compact 3.13e6±0.35e6 (ESS 171), \|z\| = 0.26, two consecutive passes; consistent with ν-fit extrapolation 2.9e6; PUBLISHED |
+| n=1,600,000 (PROVISIONAL): plateau-segment pooling by lineage | stringy 1.331e7±0.47e6 (ESS 32) vs compact 1.425e7±0.55e6 (ESS 64), \|z\| = 1.31, drift-free; mean ~1.37e7 sits ~21% below the ν-fit extrapolation 1.73e7 (ν_eff ≈ 0.54 on this rung) — stronger than expected corrections to scaling, so residual slow-mode under-equilibration is not excluded; published with that caveat |
 | perimeter band-scan of all series → rare corruption bug found (rejected cut-and-paste + zero-shift mid-move rebuild skipped the perimeter repair; ~1 event/25M steps) | fixed; full-length invariant-checked replays of both affected runs (25M + 36M steps, checks every 2000): zero failures (`docs/NOTES.md` §6b) |
 
 Measured autocorrelation time, single-cell kernel: τ ≈ 0.3 · n^2.2 moves.

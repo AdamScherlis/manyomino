@@ -230,6 +230,55 @@ excluded from the pool.</p>
     except Exception as e:
         print(f"400k card skipped: {e}")
 
+    # n=1.6M: provisional card from pooled plateau segments
+    try:
+        from gate1600kplateau import plateau as plateau16
+        from fourseed import pool as fpool16
+        allcsv16 = glob.glob(os.path.join(PROD, "n1600000_*.csv"))
+        ps16 = plateau16(sorted(f for f in allcsv16 if "_bar" in f), 0.5)
+        pc16 = plateau16(sorted(f for f in allcsv16 if "_rect" in f), 0.5)
+        a16, b16 = fpool16(ps16, 0.5), fpool16(pc16, 0.5)
+        if a16 and b16:
+            essA16 = sum(r["ess"] for r in a16[2])
+            essB16 = sum(r["ess"] for r in b16[2])
+            z16 = abs(a16[0] - b16[0]) / math.sqrt(a16[1] ** 2 + b16[1] ** 2)
+            if z16 < 3 and essA16 >= 30 and essB16 >= 30:
+                figs16 = []
+                for pat, lab in (("n1600000_bar*.txt", "stringy-lineage"),
+                                 ("n1600000_rect*.txt", "compact-lineage")):
+                    dumps = sorted(glob.glob(os.path.join(RAW, pat)),
+                                   key=os.path.getmtime, reverse=True)[:1]
+                    for f in dumps:
+                        name = "p16_" + os.path.basename(f)[:-4]
+                        png = os.path.join(figdir, name + ".png")
+                        if not os.path.exists(png):
+                            render(load(f), png, mode="dist")
+                        rg = math.sqrt(analyze_rg2_of_dump(f))
+                        figs16.append(
+                            f'<figure><img src="figs/{name}.png" alt="random '
+                            f'polyomino, n=1,600,000"><figcaption>{lab} chain '
+                            f'&middot; R<sub>g</sub> = {rg:.0f}</figcaption></figure>')
+                rgp16 = math.sqrt((a16[0] + b16[0]) / 2)
+                cards.insert(0, f"""
+<section class="card">
+<h2>n = 1,600,000<span class="badge pend">provisional</span></h2>
+<p class="sub">inflation-seeded chains pooled by lineage over plateau segments:
+&lang;R<sub>g</sub>&sup2;&rang; = {a16[0]:.3g} (stringy, ESS {essA16:.0f}) vs
+{b16[0]:.3g} (compact, ESS {essB16:.0f}), |z| = {z16:.2f}.  <b>Caveat:</b> the
+mean sits ~20% below the &nu;-fit extrapolation (1.73&times;10&#8311;), implying
+&nu;<sub>eff</sub> &asymp; 0.54 on this rung &mdash; larger than expected
+corrections to scaling, so residual slow-mode under-equilibration cannot be
+excluded; treat as a lower bound while the chains continue.</p>
+<div class="stats">
+  <div>&lang;R<sub>g</sub>&rang; <b>{rgp16:.0f}</b></div>
+  <div>pooled ESS <b>{essA16:.0f}</b> / <b>{essB16:.0f}</b></div>
+</div>
+<div class="panels">{''.join(figs16)}</div>
+</section>""")
+                pending = [(n_, w) for n_, w in pending if n_ != 1600000]
+    except Exception as e:
+        print(f"1.6M card skipped: {e}")
+
     pend_html = ""
     if pending:
         items = "".join(
