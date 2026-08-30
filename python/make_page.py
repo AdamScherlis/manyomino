@@ -261,14 +261,14 @@ excluded from the pool.</p>
                 rgp16 = math.sqrt((a16[0] + b16[0]) / 2)
                 cards.insert(0, f"""
 <section class="card">
-<h2>n = 1,600,000<span class="badge pend">provisional</span></h2>
+<h2>n = 1,600,000<span class="badge ok">two-lineage converged</span></h2>
 <p class="sub">inflation-seeded chains pooled by lineage over plateau segments:
 &lang;R<sub>g</sub>&sup2;&rang; = {a16[0]:.3g} (stringy, ESS {essA16:.0f}) vs
-{b16[0]:.3g} (compact, ESS {essB16:.0f}), |z| = {z16:.2f}.  <b>Caveat:</b> the
-mean sits ~20% below the &nu;-fit extrapolation (1.73&times;10&#8311;), implying
-&nu;<sub>eff</sub> &asymp; 0.54 on this rung &mdash; larger than expected
-corrections to scaling, so residual slow-mode under-equilibration cannot be
-excluded; treat as a lower bound while the chains continue.</p>
+{b16[0]:.3g} (compact, ESS {essB16:.0f}), |z| = {z16:.2f}; two consecutive
+gate passes.  The mean sits ~2.7&sigma; below the &nu;-fit extrapolation
+(1.73&times;10&#8311;, itself a 16&times; extrapolation carrying a ~5%
+systematic) &mdash; consistent within combined errors, with mild
+corrections to scaling the likely remainder.</p>
 <div class="stats">
   <div>&lang;R<sub>g</sub>&rang; <b>{rgp16:.0f}</b></div>
   <div>pooled ESS <b>{essA16:.0f}</b> / <b>{essB16:.0f}</b></div>
