@@ -1,0 +1,1 @@
+steps=1200300000 moved=0.3638 noop=0.0223 cut_reject=0.6139 leaf=0.2819 ring=0.1013 bfs=0.6168 bfs_nodes_per_step=3.38 rebuilds=164172 cp[accept=0 invalid=0 notbridge=0 toobig=0 nopair=0]

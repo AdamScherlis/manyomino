@@ -1,0 +1,1 @@
+steps=41725305 moved=0.2556 noop=0.0224 cut_reject=0.3644 leaf=0.2167 ring=0.0610 bfs=0.3647 bfs_nodes_per_step=2.07 rebuilds=6493 cp[accept=522786 invalid=1219598 notbridge=2667593 toobig=1743533 nopair=7241355 capped=1525305]

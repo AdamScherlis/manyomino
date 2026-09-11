@@ -1,0 +1,1 @@
+steps=20100000 moved=0.4326 noop=0.0485 cut_reject=0.5189 leaf=0.3949 ring=0.0862 bfs=0.5189 bfs_nodes_per_step=1.73 rebuilds=6848

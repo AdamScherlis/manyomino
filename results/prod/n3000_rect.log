@@ -1,0 +1,2 @@
+n=3000 init=rect seed=402 secs=2183.1 moves_per_sec=6.871e4
+steps=150000000 moved=0.1963 noop=0.0001 cut_reject=0.4703 leaf=0.1131 ring=0.0727 bfs=0.4809 bfs_nodes_per_step=193.36 rebuilds=20638 cp[accept=510135 invalid=9366506 notbridge=7064806 toobig=9871852 nopair=23185609]

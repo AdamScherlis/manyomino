@@ -1,0 +1,13 @@
+perm n=600 p=0.42 tours=2000000 samples_at_n=1260107 secs=46.4
+a_1 estimate: 1.0000e0
+a_2 estimate: 2.0012e0
+a_3 estimate: 6.0042e0
+a_4 estimate: 1.9011e1
+a_5 estimate: 6.3013e1
+a_6 estimate: 2.1609e2
+a_7 estimate: 7.6120e2
+a_8 estimate: 2.7255e3
+a_9 estimate: 9.9001e3
+a_10 estimate: 3.6421e4
+lambda_hat (a_n/a_(n-1)): 4.0589
+<Rg^2>_600 = 692.1037 +- 26.6163   weight_ESS = 221897.7 (of 1260107 samples)
