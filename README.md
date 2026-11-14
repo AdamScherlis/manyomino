@@ -103,6 +103,22 @@ Madras (J. Phys. A 25, 1992).
 
 RESULTS_PLACEHOLDER
 
+## Music video
+
+`video/` renders the chain as a 90-second music video. A 50×50 square is dissolved by the two
+moves at 90 BPM: relocation proposals run on every frame, transplant proposals come in bursts
+on the sixteenth-note grid, so branches jump on the beat. (Any fixed sequence of the two
+kernels leaves the uniform distribution stationary, so it is still the same chain.) The
+soundtrack is synthesised from the event log: each accepted relocation is a tick, and the
+largest branch moved in each burst is a mallet note, lower and longer the bigger the branch.
+
+```sh
+node video/dry.js events.json                 # the chain's event log (deterministic)
+node video/make.js out                        # out/silent.mp4, via headless Chromium + ffmpeg
+python3 video/synth.py events.json music.wav
+ffmpeg -i out/silent.mp4 -i music.wav -c:v copy -c:a aac -shortest video.mp4
+```
+
 ## Layout
 
 ```
@@ -111,4 +127,5 @@ ref/manyomino_v1.cpp   naive reference implementation
 scripts/               production ladders (resumable)
 analysis/              autocorrelation times, data reduction, rendering, page build
 page/                  source of the explainer page
+video/                 music video generator
 ```
