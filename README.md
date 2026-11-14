@@ -50,6 +50,7 @@ Useful options:
 | `-p P` | tilt by `(1-P)^perimeter`: the law of a size-N site-percolation cluster at density P |
 | `-mode exact` | histogram every shape visited and chi-square it against uniform (small N) |
 | `-mode means` | high-precision means of local observables |
+| `-revtest 1` | check reversibility of every accepted move as the chain runs |
 
 Saved shapes are little-endian `int32`: the cell count, then `x y` per cell. The time series
 columns are `move sec rg2 asph perim cycles noncut leaves w h holes deg1 deg2 deg3 deg4`.
@@ -93,6 +94,8 @@ Madras (J. Phys. A 25, 1992).
 * `analysis/exact_small.py` computes exact averages over all polyominoes by brute force;
   `-mode means` reproduces them.
 * The optimized transplant and the reference implementation agree move for move.
+* `-revtest 1` replays the reverse of every accepted move and checks it is accepted and
+  restores the shape: no failures in millions of moves at sizes from 60 to 64,000.
 * Independent ladders from different seeds agree at every size.
 * Counting removable cells recovers Klarner's constant (below).
 

@@ -263,10 +263,15 @@
   <ul class="checks">
     <li><b>Exactly uniform on small shapes.</b><span>For every size up to 9 cells the walk visits
     all of the fixed polyominoes (9,910 of them at n&nbsp;=&nbsp;9) with frequencies that pass a
-    chi-square test against uniform, for each kind of move and for the mixture.</span></li>
-    <li><b>The fast implementation is the slow one.</b><span>The lockstep transplant and a
-    forty-line reference version make identical decisions: same seed, same trajectory, bit for
-    bit, at 30, 300 and 3,000 cells.</span></li>
+    chi-square test against uniform, for each kind of move and for the mixture. Its averages
+    of perimeter, removable cells and squared radius at n&nbsp;=&nbsp;9 match exact enumeration to
+    five parts in 100,000.</span></li>
+    <li><b>Every move can be undone.</b><span>A self-test replays the reverse of each accepted move
+    and checks that it is accepted and restores the shape. Across four million relocations and
+    half a million transplants, at sizes from 60 to 64,000 cells, it never failed.</span></li>
+    <li><b>The fast implementation is the slow one.</b><span>The lockstep transplant and a short
+    reference version make identical decisions: same seed, same trajectory, bit for bit, at
+    30, 300 and 3,000 cells.</span></li>
     <li><b>Independent runs agree.</b><span>{{AGREE}}</span></li>
     <li><b>Not established: a proof of fast mixing.</b><span>The n<sup>{{Z_NEW}}</sup> law is a
     measurement of one observable&rsquo;s autocorrelation, fitted over the sizes shown. Nothing
