@@ -202,7 +202,7 @@
   branch cell as it is discovered, and stops the moment a collision with something
   <em>proven</em> to be outside the branch appears. The decision is the same one the naive
   version would reach; the two implementations produce bit-identical runs from the same seed.
-  The cost per move falls from growing like n<sup>0.75</sup> to n<sup>{{COST_EXP}}</sup>.</p>
+  With that, the cost of a move grows only like n<sup>{{COST_EXP}}</sup>, nearly all of it spent on the large branches that do get moved.</p>
   <p>Put together, one independent sample costs about n<sup>{{CPU_EXP}}</sup> of computing:
   <b>{{CPU_HERO}}</b> on one core at {{NHERO}} cells.</p>
 </section>
