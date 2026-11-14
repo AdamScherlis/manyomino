@@ -1,0 +1,285 @@
+<header class="hero">
+<div class="wrap">
+  <p class="eyebrow">Random geometry &middot; Markov chain Monte Carlo &middot; <a href="{{GALLERY_HREF}}">older gallery &rarr;</a></p>
+  <h1>One polyomino out of 10<sup>{{EXP}}</sup></h1>
+  <p class="standfirst">Join <b>{{NHERO}}</b> unit squares edge to edge. There are about
+  10<sup>{{EXP}}</sup> ways to do it. The shape below is one of them, drawn so that every one
+  of those ways was equally likely. It comes from a random walk on shapes, and most of this
+  page is about making that walk fast enough to believe.</p>
+</div>
+</header>
+
+<div class="wrap">
+
+<section>
+  <figure style="margin-top:0">
+    <div class="plate viewer" id="hero">
+      <canvas aria-label="Zoomable picture of a uniformly random polyomino with {{NHERO}} cells"></canvas>
+      <div class="loading" id="hero-loading">decoding {{NHERO}} cells&hellip;</div>
+      <div class="hint"><span class="idle">click or pinch to explore</span><span class="live">drag to pan &middot; scroll to zoom &middot; Esc to release</span></div>
+      <div class="bar">
+        <button class="pbtn" data-goto="tip" id="hero-tip">Fly to a tip</button>
+        <button class="pbtn" data-zoom="in" id="hero-in" aria-label="Zoom in">+</button>
+        <button class="pbtn" data-zoom="out" id="hero-out" aria-label="Zoom out">&minus;</button>
+        <button class="pbtn" data-zoom="fit" id="hero-fit">Whole shape</button>
+      </div>
+      <div class="readout" data-readout></div>
+    </div>
+    <figcaption>A uniformly random fixed polyomino with <b>{{NHERO}} cells</b>. Colour is
+    distance through the shape from its middle cell (gold) to the farthest tips (blue): the
+    longest route across it runs {{HERO_DIAM}} steps, though the whole thing fits in a
+    {{HERO_W}}&thinsp;&times;&thinsp;{{HERO_H}} box. Zoom far enough and you reach the individual
+    squares.</figcaption>
+  </figure>
+</section>
+
+<section class="measure">
+  <h2>The typical polyomino is a twig</h2>
+  <p class="kicker">What &ldquo;uniformly at random&rdquo; picks, and why it is never a blob.</p>
+  <p>A polyomino is a set of squares on the grid that hang together along shared edges.
+  Count two as different if they differ by a rotation or reflection (these are <em>fixed</em>
+  polyominoes) and there are 19 with four cells, 63 with five, 2,725 with eight. The count keeps
+  multiplying by about four per added cell: it grows like
+  <span class="mono">0.317&nbsp;&times;&nbsp;&lambda;<sup>n</sup>&thinsp;/&thinsp;n</span>
+  with &lambda;&nbsp;&asymp;&nbsp;4.0626, a number known as Klarner&rsquo;s constant that nobody
+  has a formula for.</p>
+  <p>The polyominoes people draw are solid: rectangles, chunky tetris pieces. Those are a
+  vanishing minority. A solid shape has few ways to rearrange itself, while a thin branching
+  one has enormously many, so when every shape gets equal weight the thin branching ones win
+  almost every draw.</p>
+</section>
+
+<section>
+  <div class="facts">
+    <div><div class="v">{{CUT_PCT}}%</div><div class="l">of cells are load-bearing: remove one and the shape falls into pieces</div></div>
+    <div><div class="v">{{TIP_PCT}}%</div><div class="l">are dead ends, touching exactly one other cell</div></div>
+    <div><div class="v">{{PERIM}}</div><div class="l">empty squares border the shape, per cell</div></div>
+    <div><div class="v">1 in {{HOLE_PER}}</div><div class="l">cells&rsquo; worth of shape, on average, per enclosed hole</div></div>
+  </div>
+  <figure>
+    <div class="ladder">
+      {{LADDER}}
+    </div>
+    <figcaption>Four independent uniform samples, each with 16 times the cells of the one
+    before and each scaled to fill its frame. Without the labels you could not put them in
+    order. The radius grows like <b>n<sup>0.64</sup></b>, so the shape is a fractal of dimension
+    about 1.56: physicists know it as a <em>lattice animal</em>, in the same universality
+    class as branched polymers.</figcaption>
+  </figure>
+</section>
+
+<hr class="keyline">
+
+<section class="measure">
+  <h2>A random walk on shapes</h2>
+  <p class="kicker">How to sample from a set far too large to list.</p>
+  <p>You cannot enumerate 10<sup>{{EXP}}</sup> shapes and pick one. You also cannot simply
+  grow a shape cell by cell: every natural growth rule favours some shapes over others, and
+  the favourites are blobs. The standard answer is to start from <em>any</em> polyomino and
+  change it a little at random, over and over, using a rule whose long-run behaviour is known
+  to be uniform.</p>
+  <p>The simplest such rule moves one cell at a time. Pick a cell and a place on the boundary
+  of the shape. If taking the cell away leaves the rest in one piece, move it there.
+  Otherwise do nothing.</p>
+  <div class="claim">
+    <p><b>If every move is exactly as likely as its reverse, the walk spends equal time on every shape.</b></p>
+    <p>Moving a cell from <i>c</i> to <i>s</i> and moving it back from <i>s</i> to <i>c</i> both
+    start from the same leftover shape, so they are offered with the same probability. The
+    walk can also reach every polyomino from every other. Together those two facts make the
+    uniform distribution its only resting state.</p>
+  </div>
+  <p>This is the chain behind the <a href="{{GALLERY_HREF}}">gallery</a> this project started
+  with. It is correct. The question is how long it takes.</p>
+</section>
+
+<section>
+  <div class="moves">
+    <div class="panel"><div id="dg-relocate"></div>
+      <p class="cap"><b>Relocate.</b> One cell (dashed) moves to an empty square beside the shape. The dark cell
+      could not be chosen: it is load-bearing.</p></div>
+    <div class="panel"><div id="dg-transplant"></div>
+      <p class="cap"><b>Transplant.</b> A whole branch is cut at a load-bearing cell <i>c</i>, turned over, and
+      re-attached at another cell <i>c&prime;</i>, provided it fits there touching nothing else.</p></div>
+  </div>
+</section>
+
+<section class="measure">
+  <h2>The one-cell walk has a long memory</h2>
+  <p class="kicker">Measuring how slowly the one-cell walk forgets.</p>
+  <p>A sample is only as good as the walk&rsquo;s memory is short. The usual yardstick is the
+  autocorrelation time &tau;: the number of moves after which some property of the shape,
+  here its squared radius of gyration, has stopped resembling its earlier self. A run of
+  length <i>T</i> is worth about <i>T</i>&thinsp;/&thinsp;2&tau; independent samples and no more.</p>
+  <p>I measured &tau; for the one-cell walk on runs hundreds to thousands of &tau; long, at
+  sizes from {{OLD_NMIN}} to {{OLD_NMAX}} cells. It grows like
+  <b>n<sup>{{Z_OLD}}</sup></b>. There is a simple reason it must be at least quadratic. Each move
+  carries one cell from a random place to a random place, so the mass of any large limb does
+  an unbiased random walk, one cell at a time. Shifting a limb&rsquo;s mass by its own size
+  <i>m</i> takes about <i>m</i>&sup2; of its own steps, and it only gets a share <i>m/n</i> of the
+  moves: <i>m&thinsp;n</i> moves in all, which is <i>n</i>&sup2; for the limbs that set the overall
+  shape. The measured exponent is higher still.</p>
+  <p>Extended to {{NHERO}} cells that law gives &tau;&nbsp;&asymp;&nbsp;{{TAU_OLD_HERO}}
+  moves. Even at a million moves a second, which is generous at that size, that is
+  {{OLD_YEARS}} of computing for each independent sample.</p>
+</section>
+
+<section>
+  <div class="two">
+    <div class="chart"><h3>Moves needed to forget the shape</h3>
+      <p class="sub">Autocorrelation time of the squared radius, in moves, against size. Dashed lines extend each fit.</p>
+      <div id="ch-tau"></div></div>
+    <div class="chart"><h3>Starting from a solid square of 30,000 cells</h3>
+      <p class="sub">Radius of gyration against moves made, both walks from the same start.</p>
+      <div id="ch-square"></div></div>
+  </div>
+  <figure>
+    <div class="strip">
+      {{SQUARE_STRIP}}
+    </div>
+    <figcaption>The same 30,000-cell square after the same {{SQ_MOVES}} moves under each walk.
+    The one-cell walk has frayed the square into something that looks random up close and is
+    still a third of its proper size. Local texture equilibrates in a few moves per cell.
+    Overall shape is what takes n<sup>{{Z_OLD}}</sup>.</figcaption>
+  </figure>
+</section>
+
+<section class="measure">
+  <h2>Move a branch, not a cell</h2>
+  <p class="kicker">A second kind of move that changes the overall shape in one step.</p>
+  <p>Seven cells in ten are load-bearing, which is what makes the one-cell walk slow: most
+  cells cannot move. It is also an opportunity. Remove a load-bearing cell and a whole branch
+  comes loose. So pick the branch up, rotate or reflect it at random, and try to plug it in
+  at a randomly chosen cell somewhere else. If it lands on empty ground and touches the rest
+  of the shape only at its new anchor, keep it. Otherwise put it back.</p>
+  <p>The &ldquo;touches only at its anchor&rdquo; condition is what keeps the move honest. It
+  guarantees that in the new shape the branch is again exactly what comes loose when its
+  anchor is removed, so the reverse transplant exists and is proposed with the same
+  probability. Equal forward and backward odds, uniform resting state, as before. Mixing the
+  two kinds of move keeps both properties, and the one-cell moves still do the work
+  transplants cannot, such as opening and closing loops.</p>
+  <p>Cut-and-paste moves of this kind are standard for lattice <em>trees</em>, where Janse van
+  Rensburg and Madras introduced them in 1992. Here the shape may contain loops and the cells
+  have no explicit bonds, which is why the contact condition is needed.</p>
+</section>
+
+<section>
+  <figure>
+    <div class="race" id="race">
+      <div class="lane"><p class="tag"><i style="background:var(--s2)"></i>One cell at a time</p>
+        <div class="plate"><canvas id="race-a" aria-label="Live polyomino evolving by single-cell moves"></canvas></div>
+        <p class="stat" id="race-a-stat">&nbsp;</p></div>
+      <div class="lane"><p class="tag"><i style="background:var(--s1)"></i>With branch transplants</p>
+        <div class="plate"><canvas id="race-b" aria-label="Live polyomino evolving by single-cell moves and branch transplants"></canvas></div>
+        <p class="stat" id="race-b-stat">&nbsp;</p></div>
+    </div>
+    <div class="controls">
+      <button class="btn primary" id="race-run">Run</button>
+      <button class="btn" id="race-reset">Start over</button>
+      <label for="race-speed">Speed <input type="range" id="race-speed" min="3" max="6.5" step="0.1" value="4.5"> <span class="mono" id="race-speed-out"></span></label>
+    </div>
+    <div class="chart" style="margin-top:.8rem"><h3>Radius of gyration as the two walks run</h3>
+      <p class="sub">Both started from the same 25&thinsp;&times;&thinsp;40 rectangle of 1,000 cells. The green band is where a uniform sample sits two times in three.</p>
+      <div class="legend"><span><svg width="22" height="10" aria-hidden="true"><line x1="1" y1="5" x2="21" y2="5" stroke="var(--s2)" stroke-width="2"/></svg>one cell at a time</span><span><svg width="22" height="10" aria-hidden="true"><line x1="1" y1="5" x2="21" y2="5" stroke="var(--s1)" stroke-width="2"/></svg>with transplants</span></div>
+      <div class="plot" id="race-trace"></div></div>
+    <figcaption>Both walks run live in your browser at the same number of moves per second.
+    With transplants the rectangle is gone within about 30,000 moves. The one-cell walk needs
+    several million to get there, and several million more each time you want a fresh shape.</figcaption>
+  </figure>
+</section>
+
+<section class="measure">
+  <p>With transplants in the mix the autocorrelation time drops to about
+  <b>{{TAU_NEW_COEF}} moves per cell</b>, growing like n<sup>{{Z_NEW}}</sup> over almost four
+  decades of size. The perimeter, the number of holes and the elongation of the shape all
+  relax at the same rate or faster. A walk cannot do much better than that: it has to touch
+  every cell at least once.</p>
+  <h3>Making a transplant cheap</h3>
+  <p>A move that picks up half the shape sounds expensive, and done naively it is: finding
+  the branch means flood-filling it. But most proposed transplants fail, and usually fail
+  within a few cells of the anchor, because the branch&rsquo;s root lands on something. So the
+  sampler floods the branch and the neighbourhood of the new anchor in lockstep, places each
+  branch cell as it is discovered, and stops the moment a collision with something
+  <em>proven</em> to be outside the branch appears. The decision is the same one the naive
+  version would reach; the two implementations produce bit-identical runs from the same seed.
+  The cost per move falls from growing like n<sup>0.75</sup> to n<sup>{{COST_EXP}}</sup>.</p>
+  <p>Put together, one independent sample costs about n<sup>{{CPU_EXP}}</sup> of computing:
+  <b>{{CPU_HERO}}</b> on one core at {{NHERO}} cells.</p>
+</section>
+
+<hr class="keyline">
+
+<section class="measure">
+  <h2>What the samples say</h2>
+  <p class="kicker">Two measurements with known answers, and a comparison.</p>
+  <p>A sampler like this earns trust by reproducing numbers obtained in entirely different
+  ways. Here are two that are known to high precision, and one comparison with this
+  project&rsquo;s earlier runs.</p>
+  <h3>The size exponent</h3>
+  <p>The radius of gyration should grow as n<sup>&nu;</sup>. The best published estimate,
+  from a different algorithm on shapes up to a few thousand cells, is
+  &nu;&nbsp;=&nbsp;0.6412&nbsp;&plusmn;&nbsp;0.0005. A straight-line fit to the sizes from
+  {{NU_NMIN}} cells up gives <b>&nu;&nbsp;=&nbsp;{{NU}}&nbsp;&plusmn;&nbsp;{{NU_ERR}}</b>.</p>
+</section>
+
+<section>
+  <div class="two">
+    <div class="chart"><h3>Radius against size</h3>
+      <p class="sub">Mean radius of gyration, in cells. Error bars are smaller than the dots.</p>
+      <div id="ch-rg"></div></div>
+    <div class="chart"><h3>The same data with the power law divided out</h3>
+      <p class="sub">Mean radius &divide; n<sup>0.6412</sup>. A flat line means the exponent is right.</p>
+      <div id="ch-resid"></div></div>
+  </div>
+</section>
+
+<section class="measure">
+  <p>The orange points are the sizes published in the earlier gallery, which used the one-cell
+  walk alone. {{GALLERY_VERDICT}}</p>
+  <h3>Klarner&rsquo;s constant, by counting removable cells</h3>
+  <p>Take any polyomino with n cells and add a cell on its boundary: you get one with n+1.
+  Take one with n+1 and remove a cell that is not load-bearing: you get one with n. Those
+  are the same set of pairs, counted from either end, so</p>
+  <div class="claim">
+    <p class="eqn"><span class="frac"><span>A(n+1)</span><span>A(n)</span></span> <span>=</span>
+      <span class="frac"><span>average number of empty squares bordering an n-cell shape</span><span>average number of removable cells in an (n+1)-cell shape</span></span></p>
+    <p>where A(n) is the number of polyominoes with n cells and both averages are over uniform samples.</p>
+  </div>
+  <p>The left side tends to &lambda;. So the growth rate of a count that is known exactly only for
+  a few dozen sizes can be read off two local statistics of a big sample. It is also a severe
+  test: a sampler with any bias towards thin or fat shapes gets it wrong. Series analysis of
+  exact counts gives &lambda;&nbsp;=&nbsp;4.0625696. Pooling the sizes from {{LAM_NMIN}} cells up,
+  the samples give <b>&lambda;&nbsp;=&nbsp;{{LAM}}&nbsp;&plusmn;&nbsp;{{LAM_ERR}}</b>.</p>
+</section>
+
+<section>
+  <div class="chart"><h3>Growth constant estimated at each size</h3>
+    <p class="sub">&lang;boundary&rang;&thinsp;/&thinsp;&lang;removable&rang;, corrected for the known 1/n factor in A(n). The green line is the accepted value 4.0625696.</p>
+    <div id="ch-lam"></div></div>
+</section>
+
+<section class="measure">
+  <h2>What is and is not established</h2>
+  <ul class="checks">
+    <li><b>Exactly uniform on small shapes.</b><span>For every size up to 9 cells the walk visits
+    all of the fixed polyominoes (9,910 of them at n&nbsp;=&nbsp;9) with frequencies that pass a
+    chi-square test against uniform, for each kind of move and for the mixture.</span></li>
+    <li><b>The fast implementation is the slow one.</b><span>The lockstep transplant and a
+    forty-line reference version make identical decisions: same seed, same trajectory, bit for
+    bit, at 30, 300 and 3,000 cells.</span></li>
+    <li><b>Independent runs agree.</b><span>{{AGREE}}</span></li>
+    <li><b>Not established: a proof of fast mixing.</b><span>The n<sup>{{Z_NEW}}</sup> law is a
+    measurement of one observable&rsquo;s autocorrelation, fitted over the sizes shown. Nothing
+    rules out some other property of the shape relaxing more slowly, and the largest size
+    rests on about {{NEFF_HERO}} autocorrelation times of running in total.</span></li>
+  </ul>
+  <p>Code, validation scripts and the data behind every chart are in
+  <a href="https://github.com/AdamScherlis/manyomino">AdamScherlis/manyomino</a>.</p>
+  <ul class="refs">
+    <li>E. J. Janse van Rensburg and N. Madras, &ldquo;A nonlocal Monte Carlo algorithm for lattice trees,&rdquo; <i>J. Phys. A</i> 25 (1992).</li>
+    <li>H.-P. Hsu, W. Nadler and P. Grassberger, &ldquo;Simulations of lattice animals and trees,&rdquo; <i>J. Phys. A</i> 38 (2005), for &nu;.</li>
+    <li>I. Jensen, &ldquo;Counting polyominoes: a parallel implementation for cluster computing,&rdquo; <i>ICCS 2003</i>, for &lambda;.</li>
+  </ul>
+</section>
+
+<footer>Sampled and measured {{DATE}}. Every figure on this page is computed from the runs in the repository.</footer>
+</div>

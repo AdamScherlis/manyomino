@@ -5,3 +5,6 @@
 /runs/
 /snaps/
 __pycache__/
+/mtest
+/manyomino_new
+/prod_old/

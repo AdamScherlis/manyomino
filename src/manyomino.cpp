@@ -755,6 +755,29 @@ int main(int argc, char **argv) {
     return 0;
   }
 
+  if (mode == "means") {
+    // high-precision means of local observables (batch means, 100 batches); no time series
+    const int NB = 100; std::vector<double> bt(NB, 0), bk(NB, 0), bh(NB, 0), br(NB, 0);
+    if (!every) every = 100;
+    u64 per = moves / NB / every;
+    for (u64 m = 0; m < burn; m++) step();
+    for (int b = 0; b < NB; b++) {
+      for (u64 i = 0; i < per; i++) {
+        for (u64 j = 0; j < every; j++) step();
+        auto o = S.measure(true);
+        bt[b] += o.perim; bk[b] += o.noncut; bh[b] += o.holes; br[b] += o.rg2;
+      }
+      bt[b] /= per; bk[b] /= per; bh[b] /= per; br[b] /= per;
+    }
+    auto ms = [&](std::vector<double> &v, const char *name) {
+      double m = 0, s2 = 0; for (double x : v) m += x; m /= NB; for (double x : v) s2 += (x - m) * (x - m);
+      printf("%s %.8f %.8f\n", name, m, std::sqrt(s2 / (NB - 1) / NB));
+    };
+    printf("n %d samples %" PRIu64 "\n", n, per * NB);
+    ms(bt, "perim"); ms(bk, "noncut"); ms(bh, "holes"); ms(br, "rg2");
+    return 0;
+  }
+
   // run mode: time series
   FILE *fo = out.empty() ? stdout : fopen(out.c_str(), "w");
   if (!every) every = std::max<u64>(1, moves / 1000);

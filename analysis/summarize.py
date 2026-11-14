@@ -29,13 +29,25 @@ def batch_err(vals, nb=20):
     return float(b.mean()), float(b.std(ddof=1) / np.sqrt(nb))
 
 
-def chain_summary(fn, burn=0.2):
-    d = read(fn)
-    n = int(re.search(r"_n(\d+)\.txt", fn).group(1))
-    d = d[int(len(d) * burn):]
-    every = d[1, 0] - d[0, 0]
-    out = {"n": n, "file": os.path.basename(fn), "samples": len(d), "every": every,
-           "moves": float(d[-1, 0] - d[0, 0]), "sec_per_move": float((d[-1, 1] - d[0, 1]) / (d[-1, 0] - d[0, 0]))}
+def read_parts(base):
+    """Concatenate ts_<base>.part*.txt in order; returns (rows, total seconds)."""
+    parts = sorted(glob.glob(base + ".part*.txt"), key=lambda f: int(re.search(r"part(\d+)", f).group(1)))
+    ds = [read(f) for f in parts]
+    ds = [d for d in ds if len(d) > 1]
+    if not ds:
+        return np.zeros((0, len(COLS))), 0.0
+    return ds, float(sum(d[-1, 1] for d in ds))
+
+
+def chain_summary(base, burn=0.2):
+    ds, secs = read_parts(base)
+    n = int(re.search(r"_n(\d+)$", base).group(1))
+    total_moves = float(sum(d[-1, 0] for d in ds))
+    every = ds[0][1, 0] - ds[0][0, 0]
+    ds[0] = ds[0][int(sum(len(d) for d in ds) * burn):] if len(ds[0]) > sum(len(d) for d in ds) * burn else ds[0][len(ds[0]) // 2:]
+    d = np.concatenate(ds)
+    out = {"n": n, "file": os.path.basename(base), "samples": len(d), "every": every,
+           "moves": total_moves, "sec_per_move": secs / total_moves}
     c = {k: i for i, k in enumerate(COLS)}
     for k in ("rg2", "asph", "perim", "noncut", "holes"):
         t, w, e = tau_int(d[:, c[k]])
@@ -47,6 +59,7 @@ def chain_summary(fn, burn=0.2):
         out[k], out[k + "_err"] = m, e
     m, e = batch_err(np.sqrt(d[:, c["rg2"]]))
     out["rg"], out["rg_err"] = m, e
+    out["rg_sd"] = float(np.sqrt(d[:, c["rg2"]]).std())
     out["rg2_sd"] = float(d[:, c["rg2"]].std())
     # atmospheric estimate of A(n+1)/A(n) = <t>_n / <k>_{n+1}, with <k>_{n+1} = <k>_n + kappa
     nb = 20
@@ -66,12 +79,13 @@ def combine(chains, key):
 def main():
     prod = os.path.join(ROOT, "prod")
     hyb = {}
-    for fn in sorted(glob.glob(prod + "/ts_[ABC]_n*.txt")):
+    bases = sorted({re.sub(r"\.part\d+\.txt$", "", f) for f in glob.glob(prod + "/ts_[ABC]_n*.part*.txt")})
+    for fn in bases:
         try:
             s = chain_summary(fn)
         except Exception as ex:
             print("skip", fn, ex, file=sys.stderr); continue
-        if s["samples"] < 200:
+        if s["samples"] < 200 or s["neff"] < 12:
             continue
         hyb.setdefault(s["n"], []).append(s)
     sizes = []
@@ -82,6 +96,8 @@ def main():
             row[key], row[key + "_err"] = combine(ch, key)
         row["sec_per_move"] = float(np.mean([c["sec_per_move"] for c in ch]))
         row["rg2_sd"] = float(np.mean([c["rg2_sd"] for c in ch]))
+        row["rg_sd"] = float(np.mean([c["rg_sd"] for c in ch]))
+        row["moves"] = float(sum(c["moves"] for c in ch))
         row["chain_rg2"] = [[c["rg2"], c["rg2_err"]] for c in ch]
         row["_tb"] = np.concatenate([c["_tb"] for c in ch]).tolist()
         row["_kb"] = np.concatenate([c["_kb"] for c in ch]).tolist()
@@ -100,7 +116,8 @@ def main():
         r["ratio"], r["ratio_err"] = float(ratio.mean()), float(ratio.std(ddof=1) / np.sqrt(len(ratio)))
         r["lam"], r["lam_err"] = float(lam.mean()), float(lam.std(ddof=1) / np.sqrt(len(lam)))
     reloc = []
-    for fn in sorted(glob.glob(prod + "/ts_reloc_n*.txt"), key=lambda f: int(re.search(r"_n(\d+)", f).group(1))):
+    rb = sorted({re.sub(r"\.part\d+\.txt$", "", f) for f in glob.glob(prod + "/ts_reloc_n*.part*.txt")}, key=lambda f: int(re.search(r"_n(\d+)", f).group(1)))
+    for fn in rb:
         try:
             s = chain_summary(fn)
         except Exception as ex:
@@ -112,16 +129,25 @@ def main():
     # the head-to-head from a square at n = 30,000
     p2 = os.path.join(ROOT, "prod2")
     for tag in ("old", "new"):
-        fn = f"{p2}/ts_{tag}_rect_n30000.txt"
-        if os.path.exists(fn):
-            d = read(fn)
-            idx = np.unique(np.round(np.geomspace(1, len(d), 400)).astype(int) - 1)
-            out[f"square_{tag}"] = [[float(d[i, 0]), float(d[i, 2])] for i in idx]
+        ds, _ = read_parts(f"{p2}/ts_{tag}sq_n30000")
+        if len(ds):
+            off = 0.0; rows = []
+            for d in ds:
+                rows.append(np.column_stack([d[:, 0] + off, d[:, 2]])); off += d[-1, 0]
+            d = np.concatenate(rows)
+            idx = np.unique(np.round(np.geomspace(1, len(d), 500)).astype(int) - 1)
+            out[f"square_{tag}"] = [[float(d[i, 0]), float(d[i, 1])] for i in idx]
+            if tag == "new":
+                late = np.sqrt(d[d[:, 0] > 2e7, 1])
+                out["square_eq"] = {"rg": float(late.mean()), "rg_sd": float(late.std())}
     json.dump(out, open(os.path.join(ROOT, "analysis", "data.json"), "w"), indent=1)
     for r in sizes:
         print(f"n={r['n']:>8} chains={r['chains']} neff={r['neff']:.0f} rg2={r['rg2']:.5g}±{r['rg2_err']:.2g} rg={r['rg']:.5g} tau={r['tau_rg2']:.3g} ({r['tau_rg2']*r['sec_per_move']:.3g}s) perim/n={r['perim']/r['n']:.5f} noncut/n={r['noncut']/r['n']:.5f} holes/n={r['holes']/r['n']:.5f} lam={r['lam']:.5f}±{r['lam_err']:.5f}  chains: " + " ".join(f"{a:.5g}±{b:.2g}" for a, b in r["chain_rg2"]))
     for r in reloc:
         print(f"reloc n={r['n']} tau={r['tau_rg2']:.3g}±{r['tau_rg2_err']:.2g} neff={r['neff']:.0f}")
+
+
+    return out
 
 
 if __name__ == "__main__":

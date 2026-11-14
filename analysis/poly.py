@@ -140,3 +140,31 @@ def encode_tree(x, y, nbr, root):
     packed = (out[0::2] | (out[1::2] << 4)).astype(np.uint8)
     hdr = struct.pack("<iii", n, int(x[root]), int(y[root]))
     return hdr + packed.tobytes(), dist
+
+
+def render_box(x, y, depth, size=560, span=None, bg=(13, 15, 22), margin=0.05):
+    """Square image with the polyomino centred.  span = cells across the box (default: fit)."""
+    from PIL import Image
+    w, h = int(x.max()) + 1, int(y.max()) + 1
+    if span is None:
+        span = max(w, h) / (1 - 2 * margin)
+    scale = size / span
+    col = ramp(depth / max(1, depth.max())).astype(float)
+    if scale >= 1:
+        px = int(scale)
+        side = int(np.ceil(span))
+        img = np.empty((side, side, 3), np.uint8); img[:] = bg
+        ox, oy = (side - w) // 2, (side - h) // 2
+        img[side - 1 - (y + oy), x + ox] = col.astype(np.uint8)
+        return Image.fromarray(img).resize((side * px, side * px), Image.NEAREST)
+    ox, oy = (span - w) / 2, (span - h) / 2
+    ix = np.clip(((x + ox + 0.5) * scale).astype(int), 0, size - 1)
+    iy = np.clip(((span - (y + oy + 0.5)) * scale).astype(int), 0, size - 1)
+    idx = iy * size + ix
+    cnt = np.bincount(idx, minlength=size * size).astype(float)
+    rgb = np.stack([np.bincount(idx, weights=col[:, c], minlength=size * size) for c in range(3)], 1)
+    m = cnt > 0
+    rgb[m] /= cnt[m, None]
+    a = np.where(m, 0.72 + 0.28 * np.clip(cnt * scale * scale * 3.0, 0, 1), 0.0)
+    out = np.array(bg, float)[None, :] * (1 - a[:, None]) + rgb * a[:, None]
+    return Image.fromarray(out.reshape(size, size, 3).astype(np.uint8))

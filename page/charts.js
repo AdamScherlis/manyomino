@@ -44,7 +44,7 @@ function chart(el, cfg) {
   }
   let hot = [];
   function render() {
-    const W = Math.max(280, holder.clientWidth), narrow = W < 520;
+    const W = Math.max(280, holder.clientWidth), narrow = W < 380;
     const m = { l: 58, r: cfg.rightPad != null ? (narrow ? Math.min(cfg.rightPad, 20) : cfg.rightPad) : 18, t: 14, b: 44 };
     let xs = [], ys = [];
     cfg.series.forEach(s => { (s.pts || []).forEach(p => { xs.push(p[0]); ys.push(p[1] - (p[2] || 0), p[1] + (p[2] || 0)); }); (s.line || []).forEach(p => { xs.push(p[0]); ys.push(p[1]); }); });
@@ -56,16 +56,19 @@ function chart(el, cfg) {
     const X = v => m.l + (T.x(v) - x0) / (x1 - x0) * (W - m.l - m.r), Y = v => H - m.b - (T.y(v) - y0) / (y1 - y0) * (H - m.t - m.b);
     let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${cfg.aria || ''}">`;
     const xt = ticks(x0, x1, cfg.xlog, narrow ? 4 : 7), yt = ticks(y0, y1, cfg.ylog, 6);
-    const lab = (t, log, f) => (f || fmtNum)(log ? Math.pow(10, t) : t);
+    const lab = (t, log, f) => {
+      if (f) return f(log ? Math.pow(10, t) : t);
+      if (log && Math.abs(t - Math.round(t)) < 1e-9 && (t >= 6 || t <= -4)) return `10<tspan dy="-5" font-size="8.5">${Math.round(t)}</tspan>`;
+      return fmtNum(log ? Math.pow(10, t) : t);
+    };
     yt.forEach(t => { const y = H - m.b - (t - y0) / (y1 - y0) * (H - m.t - m.b); s += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}"/><text class="tick" x="${m.l - 8}" y="${y + 4}" text-anchor="end">${lab(t, cfg.ylog, cfg.yfmt)}</text>`; });
     xt.forEach(t => { const x = m.l + (t - x0) / (x1 - x0) * (W - m.l - m.r); s += `<line class="grid" x1="${x}" x2="${x}" y1="${m.t}" y2="${H - m.b}"/><text class="tick" x="${x}" y="${H - m.b + 17}" text-anchor="middle">${lab(t, cfg.xlog, cfg.xfmt)}</text>`; });
     s += `<line class="axis" x1="${m.l}" x2="${W - m.r}" y1="${H - m.b}" y2="${H - m.b}"/>`;
     s += `<text class="alabel" x="${(m.l + W - m.r) / 2}" y="${H - 6}" text-anchor="middle">${cfg.xlabel}</text>`;
-    s += `<text class="alabel" x="${m.l - 46}" y="${m.t - 2}" text-anchor="start" dominant-baseline="hanging" style="display:none">${cfg.ylabel}</text>`;
     (cfg.bands || []).forEach(b => {
       s += `<rect x="${m.l}" width="${W - m.l - m.r}" y="${Y(b.y1)}" height="${Y(b.y0) - Y(b.y1)}" fill="${b.color}" opacity=".13"/>`;
       if (b.mid != null) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(b.mid)}" y2="${Y(b.mid)}" stroke="${b.color}" stroke-width="1.5"/>`;
-      if (b.label) s += `<text class="dlabel" x="${W - m.r - 6}" y="${Y(b.labelAt != null ? b.labelAt : b.y1) - 6}" text-anchor="end">${b.label}</text>`;
+      if (b.label) s += b.left ? `<text class="dlabel" x="${m.l + 8}" y="${Y(b.labelAt != null ? b.labelAt : b.y1) - 6}">${b.label}</text>` : `<text class="dlabel" x="${W - m.r - 6}" y="${Y(b.labelAt != null ? b.labelAt : b.y1) - 6}" text-anchor="end">${b.label}</text>`;
     });
     hot = [];
     cfg.series.forEach(se => {
