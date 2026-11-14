@@ -236,6 +236,17 @@ def main():
 {js}</script>
 """
         open(os.path.join(art, "manyomino.html"), "w").write(frag)
+    # ---- results table for the README
+    md = ["| cells | chains | run length / tau | <Rg^2> | <Rg> | tau / n | perimeter / n | removable / n | holes / n | lambda estimate |",
+          "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    for r in sizes:
+        md.append(f"| {r['n']:,} | {r['chains']} | {r['moves'] / r['tau_rg2']:,.0f} | {r['rg2']:.5g} ± {r['rg2_err']:.2g} | {r['rg']:.5g} ± {r['rg_err']:.2g} | "
+                  f"{r['tau_rg2'] / r['n']:.1f} | {r['perim'] / r['n']:.5f} | {r['noncut'] / r['n']:.5f} | {r['holes'] / r['n']:.5f} | {r['lam']:.4f} ± {r['lam_err']:.4f} |")
+    md += ["", f"Relocate-only autocorrelation time (moves), n = " + ", ".join(f"{r['n']}: {r['tau_rg2']:.3g}" for r in rl) + f"; fit tau ∝ n^{z:.2f} (±{ze:.2f}).",
+           f"With transplants: tau ∝ n^{z2:.2f} (±{ze2:.2f}), about {T['TAU_NEW_COEF']} moves per cell.",
+           f"Size exponent from n ≥ {NU_NMIN:,}: nu = {T['NU']} ± {T['NU_ERR']} (literature 0.6412 ± 0.0005).",
+           f"Klarner's constant from n ≥ {LAM_NMIN:,}: lambda = {T['LAM']} ± {T['LAM_ERR']} (accepted 4.0625696)."]
+    open(os.path.join(ROOT, "analysis", "results.md"), "w").write("\n".join(md) + "\n")
     print("\n".join(f"{k} = {v}" for k, v in T.items() if k not in ("LADDER", "SQUARE_STRIP")))
     print("gallery / fit:", " ".join(f"{g[0]}:{g[2]:.3f}" for g in gl))
     print("fits", D["fit_old"], D["fit_new"], D["fit_nu"])

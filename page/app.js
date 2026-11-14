@@ -56,7 +56,7 @@
       const c = L.canvas, dpr = Math.min(2, devicePixelRatio || 1), r = c.getBoundingClientRect();
       const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
       if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
-      const ctx = c.getContext('2d'), S = L.S, n = S.n;
+      const ctx = c.getContext('2d'), S = L.S, n = S.n, now = performance.now();
       let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
       for (let i = 0; i < n; i++) { const x = S.X[i], y = S.Y[i]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
       const tgt = { cx: (x0 + x1 + 1) / 2, cy: (y0 + y1 + 1) / 2, span: Math.max(x1 - x0, y1 - y0) + 5 };
@@ -66,8 +66,8 @@
       ctx.fillStyle = 'rgb(' + PLATE.join(',') + ')'; ctx.fillRect(0, 0, w, h);
       const sz = Math.max(1, s - (s > 5 ? 1 : 0));
       for (let i = 0; i < n; i++) {
-        const col = rampColor(D[i] / md);
-        ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+        const col = rampColor(D[i] / md), f = S.flash[i] ? Math.max(0, 1 - (now - S.flash[i]) / 450) : 0;
+        ctx.fillStyle = f > 0 ? `rgb(${Math.round(col[0] + (255 - col[0]) * f)},${Math.round(col[1] + (255 - col[1]) * f)},${Math.round(col[2] + (255 - col[2]) * f)})` : `rgb(${col[0]},${col[1]},${col[2]})`;
         ctx.fillRect(w / 2 + (S.X[i] - L.view.cx) * s, h / 2 - (S.Y[i] + 1 - L.view.cy) * s, sz, sz);
       }
       const rg = Math.sqrt(S.rg2());
@@ -95,6 +95,7 @@
       const rate = Math.pow(10, +$('race-speed').value), k = Math.max(1, Math.round(rate * dt));
       lanes.forEach(L => {
         const S = L.S, t0 = performance.now();
+        S.setClock(t0);
         let i = 0;
         for (; i < k; i++) {
           if (L.pcp && S.rnd() < L.pcp) S.transplant(); else S.relocate();

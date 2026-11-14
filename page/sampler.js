@@ -17,6 +17,8 @@ function Sampler(cells, lgW, seed) {
   const q = [[], [], [], []], qh = [0, 0, 0, 0], par = [0, 0, 0, 0];
   const find = a => { while (par[a] !== a) a = par[a]; return a; };
   const stats = { rel: 0, relAcc: 0, cp: 0, cpAcc: 0, moved: 0 };
+  const flash = new Float64Array(n);            // time of each cell's last ride on a transplanted branch
+  let clock = 0;
 
   // is P \ c connected?  lockstep BFS from the neighbours of c
   function removable(ic) {
@@ -102,6 +104,7 @@ function Sampler(cells, lgW, seed) {
     for (let i = 0; i < m; i++) grid[at(X[B[i]], Y[B[i]])] = 0;
     for (let i = 0; i < m; i++) { const j = B[i]; X[j] = nx[i]; Y[j] = ny[i]; grid[at(nx[i], ny[i])] = j + 1; }
     stats.cpAcc++; stats.moved += m;
+    if (m >= 6) for (let i = 0; i < m; i++) flash[B[i]] = clock;
     return true;
   }
 
@@ -124,6 +127,6 @@ function Sampler(cells, lgW, seed) {
     sweep(v);
     return dist;
   }
-  return { n, X, Y, relocate, transplant, rg2, depths, stats, rnd };
+  return { n, X, Y, relocate, transplant, rg2, depths, stats, rnd, flash, setClock: t => { clock = t; } };
 }
 if (typeof module !== 'undefined') module.exports = { Sampler };
