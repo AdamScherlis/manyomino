@@ -43,6 +43,7 @@ def sci(v, digits=1):
 
 
 def duration(sec):
+    if sec < 1.5: return "about a second"
     if sec < 90: return f"about {sec:.0f} seconds"
     if sec < 5400: return f"about {sec / 60:.0f} minutes"
     if sec < 2 * 86400: return f"about {sec / 3600:.0f} hours"

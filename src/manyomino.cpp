@@ -312,6 +312,13 @@ struct Sampler {
     } else clearCell(cx, cy);
     X[ic] = sx; Y[ic] = sy; setCell(sx, sy, ic + 1);
     accRel++;
+    if (revTest) {
+      // the reverse move (same K): the cell now at s goes back to the empty site c
+      int kr = 0;
+      for (int e = 0; e < 4; e++) { u32 a = occ(cx + DX[e], cy + DY[e]); if (a && (int)a - 1 != ic) kr++; }
+      bool ok = kr >= 1 && connAt(sx, sy, ic, K) && (!(relK && kr > 1) || connAt(cx, cy, ic, K));
+      revRelChecked++; if (!ok) revRelFail++;
+    }
   }
 
   // --- CUT & PASTE ------------------------------------------------------------------
@@ -408,10 +415,28 @@ struct Sampler {
     if (refCP) { cutpasteRef(pivot); return; }
     nCP++;
     int ic = rng.below(n), d = rng.below(4), ia = pivot ? ic : (int)rng.below(n), g = pivot ? 1 + (int)rng.below(7) : (int)rng.below(8);
+    bool ok = cutpasteWith(ic, d, ia, g);
+    if (ok && revTest) {
+      // the reverse proposal (c', g(d), c, g^-1) must be accepted and restore the shape
+      const int *M = G[g];
+      int rx = M[0] * DX[d] + M[1] * DY[d], ry = M[2] * DX[d] + M[3] * DY[d], rd = -1, gi = -1;
+      for (int e = 0; e < 4; e++) if (DX[e] == rx && DY[e] == ry) rd = e;
+      for (int h = 0; h < 8; h++) {
+        const int *I = G[h];
+        if (I[0] * M[0] + I[1] * M[2] == 1 && I[0] * M[1] + I[1] * M[3] == 0 && I[2] * M[0] + I[3] * M[2] == 0 && I[2] * M[1] + I[3] * M[3] == 1) gi = h;
+      }
+      revChecked++;
+      if (!cutpasteWith(ia, rd, ic, gi)) { revFail++; return; }
+      if (!cutpasteWith(ic, d, ia, g)) revFail2++;
+    }
+  }
+  u64 revChecked = 0, revFail = 0, revFail2 = 0, revRelChecked = 0, revRelFail = 0;
+  bool revTest = false;
+  bool cutpasteWith(int ic, int d, int ia, int g) {
     int cx = X[ic], cy = Y[ic];
-    if (!occ(cx + DX[d], cy + DY[d])) return;
+    if (!occ(cx + DX[d], cy + DY[d])) return false;
     int deg;
-    if (locallyConnected(cx, cy, deg)) return;  // c is not a cut cell
+    if (locallyConnected(cx, cy, deg)) return false;  // c is not a cut cell
     stamp++;
     mark[ic] = stamp; lab[ic] = 255;
     ngrp = 0; int gd = -1;
@@ -431,7 +456,7 @@ struct Sampler {
         q[ga].clear(); qh[ga] = 0; imgi[ga] = 0; q[ga].push_back(ia);
         mark[ia] = stamp; lab[ia] = ga; par[ga] = ga; exhausted[ga] = false;
       }
-      if (ga == gd) return;
+      if (ga == gd) return false;
     }
     const int ax = X[ia], ay = Y[ia];
     const int *M = G[g];
@@ -453,7 +478,7 @@ struct Sampler {
         }
       }
       int rB = find(gd), rA = ga >= 0 ? find(ga) : -1;
-      if (rA == rB) return;                     // c' is in B
+      if (rA == rB) return false;                     // c' is in B
       size_t szB = 0, szEx = 0; bool liveB = false; int liveOther = 0;
       bool live[5] = {false, false, false, false, false};
       for (int h = 0; h < ngrp; h++) if (qh[h] < q[h].size()) live[find(h)] = true;
@@ -462,9 +487,9 @@ struct Sampler {
         if (r == rB) szB += q[h].size(); else if (!live[r]) szEx += q[h].size();
         if (r == h) { if (r == rB) liveB = live[r]; else if (live[r]) liveOther++; }
       }
-      if ((int)szB > smax) return;
+      if ((int)szB > smax) return false;
       if (liveB && liveOther == 0) {            // B is "everything else"
-        if ((size_t)(n - 1) - szEx > (size_t)smax) return;
+        if ((size_t)(n - 1) - szEx > (size_t)smax) return false;
       }
       // images of the B cells discovered so far
       for (int h = 0; h < ngrp; h++) {
@@ -477,12 +502,12 @@ struct Sampler {
             u32 o = e < 0 ? occ(x, y) : occ(x + DX[e], y + DY[e]);
             if (!o) continue;
             int k = o - 1;
-            if (k == ia) { if (e < 0) return; continue; }
+            if (k == ia) { if (e < 0) return false; continue; }
             if (mark[k] == stamp) {
-              if (lab[k] == 255) return;         // hits or touches c
+              if (lab[k] == 255) return false;         // hits or touches c
               int r = find(lab[k]);
               if (r == rB) continue;
-              if (r == rA) return;               // certainly in A
+              if (r == rA) return false;               // certainly in A
             }
             if (pend[k] != stamp) { pend[k] = stamp; pendList.push_back(k); }
           }
@@ -491,8 +516,8 @@ struct Sampler {
       if (!liveB) done = true;
     }
     int rB = find(gd);
-    for (int k : pendList) if (!(mark[k] == stamp && lab[k] != 255 && find(lab[k]) == rB)) return;
-    if (ia == ic && g == 0) return;             // identity
+    for (int k : pendList) if (!(mark[k] == stamp && lab[k] != 255 && find(lab[k]) == rB)) return false;
+    if (ia == ic && g == 0) return false;             // identity
     B.clear();
     for (int h = 0; h < ngrp; h++) if (find(h) == rB) B.insert(B.end(), q[h].begin(), q[h].end());
     size_t bsz = B.size();
@@ -511,9 +536,10 @@ struct Sampler {
       int before = localPerim(B, nx, ny);
       apply();
       int dt = localPerim(B, nx, ny) - before;
-      if (dt != 0 && rng.uni() >= std::exp(logq * dt)) { apply(); return; }
+      if (dt != 0 && rng.uni() >= std::exp(logq * dt)) { apply(); return false; }
     } else apply();
     accCP++; cpMoved += bsz; cpAccHist[hb]++;
+    return true;
   }
 
   // number of perimeter sites among: empty neighbours of current B cells, the sites
@@ -637,7 +663,7 @@ static double now() {
 int main(int argc, char **argv) {
   int n = 100, lgW = 0; u64 seed = 1; double pcp = 0.5, tsec = 0; u64 moves = 1000000, every = 0, burn = 0;
   std::string seedShape = "rect", out = "", mode = "run", load = "", snap = ""; double p = 0; u64 snapEvery = 0; int full = 1;
-  int smax = -1, relK = 1, refCP = 0, inflate = 1; double ppv = 0, ckptSec = 120; std::string ckpt = "";
+  int smax = -1, relK = 1, refCP = 0, inflate = 1, revtest = 0; double ppv = 0, ckptSec = 120; std::string ckpt = "";
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     auto nxt = [&]() { return std::string(argv[++i]); };
@@ -660,6 +686,7 @@ int main(int argc, char **argv) {
     else if (a == "-ckpt") ckpt = nxt();
     else if (a == "-ckptSec") ckptSec = atof(nxt().c_str());
     else if (a == "-inflate") inflate = atoi(nxt().c_str());
+    else if (a == "-revtest") revtest = atoi(nxt().c_str());
     else if (a == "-relK") relK = atoi(nxt().c_str());
     else if (a == "-ref") refCP = atoi(nxt().c_str());
     else if (a == "-ppv") ppv = atof(nxt().c_str());
@@ -707,7 +734,7 @@ int main(int argc, char **argv) {
   S.place(cells);
   if (p > 0) S.logq = std::log(1.0 - p);
   if (smax >= 0) S.smax = std::min(smax, (n - 1) / 2);
-  S.relK = relK; S.refCP = refCP;
+  S.relK = relK; S.refCP = refCP; S.revTest = revtest;
   u64 thr = (u64)(pcp * 18446744073709551615.0), thr2 = (u64)((pcp + ppv) * 18446744073709551615.0);
   auto step = [&]() { u64 r = S.rng.next(); if (r < thr) S.cutpaste(false); else if (r < thr2) S.cutpaste(true); else S.relocate(); };
 
@@ -817,6 +844,8 @@ int main(int argc, char **argv) {
   fprintf(stderr, "n=%d moves=%" PRIu64 " %.1fs (%.2f Mmoves/s) accRel=%.4f accCP=%.5f bfs/move=%.1f movedCells/CP=%.2f\n",
           n, m, el, m / el / 1e6, (double)S.accRel / std::max<u64>(1, S.nRel), (double)S.accCP / std::max<u64>(1, S.nCP),
           (double)S.bfsWork / m, (double)S.cpMoved / std::max<u64>(1, S.nCP));
+  if (revtest) fprintf(stderr, "reversibility: transplants checked %" PRIu64 " reverse-rejected %" PRIu64 " reapply-failed %" PRIu64 "; relocations checked %" PRIu64 " reverse-rejected %" PRIu64 "\n",
+                       S.revChecked, S.revFail, S.revFail2, S.revRelChecked, S.revRelFail);
   fprintf(stderr, "cp branch-size histogram (log2 bins: proposed/accepted):");
   for (int i = 0; i < 40; i++) if (S.cpHist[i]) fprintf(stderr, " [%d]%" PRIu64 "/%" PRIu64, i, S.cpHist[i], S.cpAccHist[i]);
   fprintf(stderr, "\n");
