@@ -77,7 +77,8 @@ def main():
     hero_n = max(r["n"] for r in sizes if latest_ckpt(r["n"]) and r["neff"] >= 12)
     hx, hy, hnbr, hc, hd, hdiam = prep(latest_ckpt(hero_n))
     enc, _ = encode_tree(hx, hy, hnbr, hc)
-    open(os.path.join(assets, "hero.bin"), "wb").write(enc)
+    import base64
+    open(os.path.join(assets, "hero.txt"), "w").write(base64.b64encode(enc).decode())
     T["NHERO"] = commas(hero_n)
     T["EXP"] = commas(hero_n * math.log10(LAMBDA) + math.log10(AMP) - math.log10(hero_n))
     T["HERO_DIAM"], T["HERO_W"], T["HERO_H"] = commas(hdiam), commas(hx.max() + 1), commas(hy.max() + 1)
@@ -187,7 +188,7 @@ def main():
     demo = next(r for r in sizes if r["n"] == 1000)
     D["demo"] = {"n": 1000, "rg": demo["rg"], "rg_sd": demo["rg_sd"]}
     D["example"] = EXAMPLE
-    D["heroUrl"] = "explain/hero.bin"
+    D["heroUrl"] = "explain/hero.txt"
     D.setdefault("square_old", [[1e5, 5000]]); D.setdefault("square_new", [[1e5, 5000]]); D.setdefault("square_eq", {"rg": 320, "rg_sd": 60})
     T["DATE"] = datetime.date.today().strftime("%B %Y")
     json.dump(D, open(os.path.join(ROOT, "analysis", "data.json"), "w"), indent=1)

@@ -4,8 +4,11 @@
   const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
   // ---------------------------------------------------------------- hero viewer
-  fetch(DATA.heroUrl).then(r => r.arrayBuffer()).then(buf => {
-    const poly = decodePoly(buf);
+  // the sample ships as base64 text (one nibble per cell underneath)
+  fetch(DATA.heroUrl).then(r => r.text()).then(txt => {
+    const bin = atob(txt.trim()), u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    const poly = decodePoly(u8.buffer);
     $('hero-loading').hidden = true;
     PolyViewer($('hero'), poly);
   }).catch(() => { $('hero-loading').textContent = 'could not load the sample'; });
@@ -143,7 +146,7 @@
       ],
     });
   })();
-  function sup(s) { return String(s).replace(/[0-9.\-]/g, d => ({ '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '.': '·', '-': '⁻' })[d]); }
+  function sup(s) { return `<tspan dy="-5" font-size="9">${s}</tspan>`; }
   (function () {
     const eq = DATA.square_eq;
     chart($('ch-square'), {
