@@ -134,7 +134,8 @@ def main():
     hero_row = next(r for r in sizes if r["n"] == hero_n)
     # at the largest size tau itself is poorly measured; use the fitted law there
     T["CPU_HERO"] = duration(2 * tau_coef * hero_n * spm[hero_n])
-    T["NEFF_HERO"] = commas(hero_row['moves'] / (tau_coef * hero_n))
+    kept = hero_row['moves'] - hero_row['chains'] * hero_row['burn_n'] * hero_n      # moves after burn-in
+    T["NEFF_HERO"] = commas(round(kept / (tau_coef * hero_n)))
     T["BURN_N"] = commas(D.get("burn_n", 300))
     D["cpu"] = [[r["n"], spm[r["n"]], r["tau_rg2"] * spm[r["n"]]] for r in sizes]
 
@@ -151,8 +152,12 @@ def main():
     ls = [r for r in sizes if r["n"] >= LAM_NMIN]
     w = np.array([1 / r["lam_err"] ** 2 for r in ls])
     lam = float((w * np.array([r["lam"] for r in ls])).sum() / w.sum())
-    T["LAM"], T["LAM_ERR"], T["LAM_NMIN"] = f"{lam:.4f}", f"{1 / math.sqrt(w.sum()):.4f}", commas(LAM_NMIN)
-    D["lam_pooled"] = [lam, 1 / math.sqrt(w.sum())]
+    # the sizes scatter slightly more than their error bars say: widen the pooled error to match
+    chi2 = float((w * (np.array([r["lam"] for r in ls]) - lam) ** 2).sum())
+    lam_err = max(1.0, math.sqrt(chi2 / (len(ls) - 1))) / math.sqrt(w.sum())
+    T["LAM"], T["LAM_ERR"], T["LAM_NMIN"] = f"{lam:.4f}", f"{lam_err:.4f}", commas(LAM_NMIN)
+    D["lam_pooled"] = [lam, lam_err]
+    D["lam_chi2"] = [chi2, len(ls) - 1]
 
     # ---- agreement between independent ladders
     zs = []
@@ -254,10 +259,14 @@ def main():
     for r in sizes:
         md.append(f"| {r['n']:,} | {r['chains']} | {r['moves'] / r['tau_rg2']:,.0f} | {r['rg2']:.5g} ± {r['rg2_err']:.2g} | {r['rg']:.5g} ± {r['rg_err']:.2g} | "
                   f"{r['tau_rg2'] / r['n']:.1f} | {r['perim'] / r['n']:.5f} | {r['noncut'] / r['n']:.5f} | {r['holes'] / r['n']:.5f} | {r['lam']:.4f} ± {r['lam_err']:.4f} |")
+    md += ["", f"Each run starts from a 2x-inflated sample of the size below; the first {T['BURN_N']} n moves (and at least a fifth of the run) "
+           "are discarded. tau is the integrated autocorrelation time of Rg^2 in moves, and run length counts all moves. Above about "
+           "100,000 cells the runs are only tens of tau long after burn-in, so tau itself is poorly determined there (hence the scatter in tau / n)."]
     md += ["", f"Relocate-only autocorrelation time (moves), n = " + ", ".join(f"{r['n']}: {r['tau_rg2']:.3g}" for r in rl) + f"; fit tau ∝ n^{z:.2f} (±{ze:.2f}).",
            f"With transplants: tau ∝ n^{z2:.2f} (±{ze2:.2f}), about {T['TAU_NEW_COEF']} moves per cell.",
            f"Size exponent from n ≥ {NU_NMIN:,}: nu = {T['NU']} ± {T['NU_ERR']} (literature 0.6412 ± 0.0005).",
-           f"Klarner's constant from n ≥ {LAM_NMIN:,}: lambda = {T['LAM']} ± {T['LAM_ERR']} (accepted 4.0625696)."]
+           f"Klarner's constant from n ≥ {LAM_NMIN:,}: lambda = {T['LAM']} ± {T['LAM_ERR']} (accepted 4.0625696; "
+           f"chi-square of the sizes about their mean {D['lam_chi2'][0]:.1f} for {D['lam_chi2'][1]} degrees of freedom, error scaled accordingly)."]
     open(os.path.join(ROOT, "analysis", "results.md"), "w").write("\n".join(md) + "\n")
     print("\n".join(f"{k} = {v}" for k, v in T.items() if k not in ("LADDER", "SQUARE_STRIP")))
     print("gallery / fit:", " ".join(f"{g[0]}:{g[2]:.3f}" for g in gl))

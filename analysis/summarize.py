@@ -6,6 +6,7 @@ from tau import tau_int
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 COLS = "move sec rg2 asph perim cycles noncut leaves w h holes deg1 deg2 deg3 deg4".split()
 BURN_N = 300.0          # minimum burn-in of a ladder stage, in units of n moves
+BATCH_N = 70.0          # minimum length of an error-bar batch, in units of n moves
 LAMBDA = 4.0625696   # Jensen's series estimate of Klarner's constant
 
 
@@ -21,13 +22,24 @@ def read(fn):
     return np.array(rows, float)
 
 
+def batches(vals, nb):
+    m = len(vals) // nb
+    return vals[: m * nb].reshape(nb, m).mean(1)
+
+
 def batch_err(vals, nb=20):
     """mean and standard error from nb batch means of a stationary series."""
-    m = len(vals) // nb
-    if m < 1:
+    if len(vals) < nb:
         return float(np.mean(vals)), float("nan")
-    b = vals[: m * nb].reshape(nb, m).mean(1)
+    b = batches(vals, nb)
     return float(b.mean()), float(b.std(ddof=1) / np.sqrt(nb))
+
+
+def pooled(bs, ws):
+    """weighted mean of batch means from several chains (weight = batch length) and its standard error."""
+    b = np.concatenate(bs); w = np.concatenate(ws); w = w / w.sum()
+    m = float((w * b).sum())
+    return m, float(np.sqrt((w ** 2 * (b - m) ** 2).sum() * len(b) / (len(b) - 1)))
 
 
 def read_parts(base):
@@ -60,26 +72,29 @@ def chain_summary(base, burn=0.2, burn_n=0.0):
         out["tau_" + k] = float(t * every)
         out["tau_" + k + "_err"] = float(e * every)
     out["neff"] = float(len(d) * every / (2 * out["tau_rg2"]))
+    # Error bars from batch means.  Batches must be long compared with the autocorrelation time
+    # (about 15n moves for Rg^2), so at most 20 of them and none shorter than BATCH_N * n moves.
+    nb = int(min(20, max(4, len(d) * every / (BATCH_N * n))))
+    out["nb"] = nb
+    out["_b"], out["_w"] = {}, np.full(nb, float(len(d) // nb))
     for k in ("rg2", "asph", "perim", "noncut", "holes", "cycles", "leaves", "deg1", "deg2", "deg3", "deg4"):
-        m, e = batch_err(d[:, c[k]])
+        m, e = batch_err(d[:, c[k]], nb)
         out[k], out[k + "_err"] = m, e
-    m, e = batch_err(np.sqrt(d[:, c["rg2"]]))
+        out["_b"][k] = batches(d[:, c[k]], nb)
+    m, e = batch_err(np.sqrt(d[:, c["rg2"]]), nb)
     out["rg"], out["rg_err"] = m, e
+    out["_b"]["rg"] = batches(np.sqrt(d[:, c["rg2"]]), nb)
     out["rg_sd"] = float(np.sqrt(d[:, c["rg2"]]).std())
     out["rg2_sd"] = float(d[:, c["rg2"]].std())
     # atmospheric estimate of A(n+1)/A(n) = <t>_n / <k>_{n+1}, with <k>_{n+1} = <k>_n + kappa
-    nb = 20
-    mlen = len(d) // nb
-    t = d[: mlen * nb, c["perim"]].reshape(nb, mlen).mean(1)
-    k = d[: mlen * nb, c["noncut"]].reshape(nb, mlen).mean(1)
-    out["_tb"], out["_kb"] = t.tolist(), k.tolist()
+    out["_tb"], out["_kb"] = out["_b"]["perim"].tolist(), out["_b"]["noncut"].tolist()
     return out
 
 
 def combine(chains, key):
-    v = np.array([c[key] for c in chains]); e = np.array([c[key + "_err"] for c in chains])
-    w = 1 / e ** 2
-    return float((v * w).sum() / w.sum()), float(1 / np.sqrt(w.sum()))
+    """Pool the batches of all chains at one size.  (Inverse-variance weighting of per-chain means
+    would favour whichever chain happened to get a small error estimate from its few batches.)"""
+    return pooled([c["_b"][key] for c in chains], [c["_w"] for c in chains])
 
 
 def main():
@@ -113,6 +128,8 @@ def main():
         row["chain_rg2"] = [[c["rg2"], c["rg2_err"]] for c in ch]
         row["_tb"] = np.concatenate([c["_tb"] for c in ch]).tolist()
         row["_kb"] = np.concatenate([c["_kb"] for c in ch]).tolist()
+        row["_bw"] = np.concatenate([c["_w"] for c in ch])
+        row["batches"] = int(sum(c["nb"] for c in ch))
         sizes.append(row)
     # kappa = limiting density of non-cut cells: slope of <k> vs n from the two largest sizes
     big = [r for r in sizes if r["n"] >= 4000]
@@ -125,8 +142,9 @@ def main():
         t = np.array(r.pop("_tb")); k = np.array(r.pop("_kb"))
         ratio = t / (k + kappa)                       # batchwise A(n+1)/A(n)
         lam = ratio * (1 + 1.0 / r["n"])              # remove the n^-theta factor, theta = 1
-        r["ratio"], r["ratio_err"] = float(ratio.mean()), float(ratio.std(ddof=1) / np.sqrt(len(ratio)))
-        r["lam"], r["lam_err"] = float(lam.mean()), float(lam.std(ddof=1) / np.sqrt(len(lam)))
+        w = r.pop("_bw")
+        r["ratio"], r["ratio_err"] = pooled([ratio], [w])
+        r["lam"], r["lam_err"] = pooled([lam], [w])
     # a dedicated long run of local observables only (-mode means), folded into its size's estimate
     ded = None
     mf = os.path.join(ROOT, "runs", "means2000_C.txt")

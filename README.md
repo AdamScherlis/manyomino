@@ -19,8 +19,8 @@ relocation alone can reach every polyomino. The writeup, with pictures and a liv
 ## Why two moves
 
 Relocation by itself is correct but slow: its autocorrelation time (for the squared radius of
-gyration) grows like `n^2.5` moves, because mass can only diffuse through the shape one cell
-at a time. With transplants it is about `14 n` moves. See [Results](#results).
+gyration) grows like `n^2.6` moves, because mass can only diffuse through the shape one cell
+at a time. With transplants it is about `15 n` moves. See [Results](#results).
 
 ## Build and run
 
@@ -101,7 +101,34 @@ Madras (J. Phys. A 25, 1992).
 
 ## Results
 
-RESULTS_PLACEHOLDER
+Two independent ladders (seeds A and B) at every other size, a third (C) at the sizes between;
+one core each, about 16 core-hours in total. `analysis/summarize.py` and `analysis/build_page.py`
+regenerate everything below from the raw time series, which are not in the repository
+(`scripts/launch_all.sh` reruns them).
+
+| cells | chains | run length / tau | <Rg^2> | <Rg> | tau / n | perimeter / n | removable / n | holes / n | lambda estimate |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 125 | 1 | 81,208 | 90.948 ± 0.17 | 9.4562 ± 0.0084 | 14.5 | 1.23006 | 0.30302 | 0.02094 | 4.0602 ± 0.0032 |
+| 250 | 2 | 64,669 | 222.51 ± 0.37 | 14.788 ± 0.012 | 15.6 | 1.21278 | 0.29866 | 0.02199 | 4.0610 ± 0.0029 |
+| 500 | 1 | 13,709 | 543.3 ± 3 | 23.11 ± 0.061 | 15.3 | 1.20384 | 0.29614 | 0.02245 | 4.0652 ± 0.0058 |
+| 1,000 | 2 | 15,379 | 1323.8 ± 4.1 | 36.07 ± 0.056 | 14.5 | 1.19938 | 0.29541 | 0.02284 | 4.0601 ± 0.0027 |
+| 2,000 | 1 | 6,219 | 3250 ± 14 | 56.502 ± 0.12 | 15.1 | 1.19714 | 0.29475 | 0.02293 | 4.0619 ± 0.0007 |
+| 4,000 | 2 | 9,467 | 7853.6 ± 34 | 87.858 ± 0.19 | 14.4 | 1.19612 | 0.29460 | 0.02300 | 4.0601 ± 0.0022 |
+| 8,000 | 1 | 2,384 | 19186 ± 2e+02 | 137.29 ± 0.7 | 13.7 | 1.19526 | 0.29433 | 0.02309 | 4.0610 ± 0.0026 |
+| 16,000 | 2 | 2,081 | 46699 ± 4.4e+02 | 214.22 ± 0.99 | 17.6 | 1.19516 | 0.29428 | 0.02307 | 4.0613 ± 0.0022 |
+| 32,000 | 1 | 634 | 1.1246e+05 ± 1.8e+03 | 332.32 ± 2.5 | 14.2 | 1.19492 | 0.29446 | 0.02309 | 4.0581 ± 0.0028 |
+| 64,000 | 2 | 430 | 2.7559e+05 ± 4.6e+03 | 520.5 ± 4.3 | 21.8 | 1.19513 | 0.29417 | 0.02306 | 4.0628 ± 0.0023 |
+| 128,000 | 1 | 225 | 6.9162e+05 ± 2.2e+04 | 822.09 ± 12 | 12.0 | 1.19520 | 0.29410 | 0.02304 | 4.0639 ± 0.0026 |
+| 256,000 | 2 | 104 | 1.6449e+06 ± 5.3e+04 | 1273.7 ± 19 | 22.5 | 1.19511 | 0.29424 | 0.02305 | 4.0616 ± 0.0017 |
+| 512,000 | 1 | 130 | 3.8113e+06 ± 1.3e+05 | 1935.5 ± 33 | 12.4 | 1.19512 | 0.29400 | 0.02308 | 4.0651 ± 0.0012 |
+| 1,024,000 | 2 | 215 | 9.2941e+06 ± 2.3e+05 | 3029.3 ± 37 | 5.4 | 1.19485 | 0.29437 | 0.02311 | 4.0590 ± 0.0016 |
+
+Each run starts from a 2x-inflated sample of the size below; the first 300 n moves (and at least a fifth of the run) are discarded. tau is the integrated autocorrelation time of Rg^2 in moves, and run length counts all moves. Above about 100,000 cells the runs are only tens of tau long after burn-in, so tau itself is poorly determined there (hence the scatter in tau / n).
+
+Relocate-only autocorrelation time (moves), n = 50: 3.84e+03, 100: 2.41e+04, 200: 1.41e+05, 400: 9.33e+05, 800: 6.09e+06, 1600: 1.54e+07; fit tau ∝ n^2.62 (±0.04).
+With transplants: tau ∝ n^0.99 (±0.03), about 15 moves per cell.
+Size exponent from n ≥ 4,000: nu = 0.6402 ± 0.0014 (literature 0.6412 ± 0.0005).
+Klarner's constant from n ≥ 1,000: lambda = 4.0619 ± 0.0006 (accepted 4.0625696; chi-square of the sizes about their mean 14.0 for 10 degrees of freedom, error scaled accordingly).
 
 ## Music video
 
