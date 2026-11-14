@@ -5,6 +5,7 @@ from tau import tau_int
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 COLS = "move sec rg2 asph perim cycles noncut leaves w h holes deg1 deg2 deg3 deg4".split()
+BURN_N = 300.0          # minimum burn-in of a ladder stage, in units of n moves
 LAMBDA = 4.0625696   # Jensen's series estimate of Klarner's constant
 
 
@@ -39,15 +40,20 @@ def read_parts(base):
     return ds, float(sum(d[-1, 1] for d in ds))
 
 
-def chain_summary(base, burn=0.2):
+def chain_summary(base, burn=0.2, burn_n=0.0):
     ds, secs = read_parts(base)
     n = int(re.search(r"_n(\d+)$", base).group(1))
     total_moves = float(sum(d[-1, 0] for d in ds))
     every = ds[0][1, 0] - ds[0][0, 0]
-    ds[0] = ds[0][int(sum(len(d) for d in ds) * burn):] if len(ds[0]) > sum(len(d) for d in ds) * burn else ds[0][len(ds[0]) // 2:]
+    # Burn-in: the first 20% of the run, and never less than BURN_N * n moves.  A stage starts from
+    # a 2x-inflated sample, whose local structure (perimeter, cut cells) relaxes as exp(-t / ~43n).
     d = np.concatenate(ds)
+    nburn = int(max(len(d) * burn, burn_n * n / every))
+    d = d[nburn:]
+    if len(d) < 30:
+        raise ValueError("too short after burn-in")
     out = {"n": n, "file": os.path.basename(base), "samples": len(d), "every": every,
-           "moves": total_moves, "sec_per_move": secs / total_moves}
+           "moves": total_moves, "sec_per_move": secs / total_moves, "burn_moves": nburn * every}
     c = {k: i for i, k in enumerate(COLS)}
     for k in ("rg2", "asph", "perim", "noncut", "holes"):
         t, w, e = tau_int(d[:, c[k]])
@@ -82,18 +88,24 @@ def main():
     bases = sorted({re.sub(r"\.part\d+\.txt$", "", f) for f in glob.glob(prod + "/ts_[ABC]_n*.part*.txt")})
     for fn in bases:
         try:
-            s = chain_summary(fn)
+            s = chain_summary(fn, burn_n=BURN_N)
         except Exception as ex:
             print("skip", fn, ex, file=sys.stderr); continue
-        if s["samples"] < 200 or s["neff"] < 12:
+        if s["samples"] < 60 or s["neff"] < 8:
             continue
         hyb.setdefault(s["n"], []).append(s)
     sizes = []
     for n in sorted(hyb):
         ch = hyb[n]
         row = {"n": n, "chains": len(ch), "neff": sum(c["neff"] for c in ch)}
-        for key in ("rg2", "rg", "asph", "perim", "noncut", "holes", "cycles", "leaves", "deg1", "deg2", "deg3", "deg4", "tau_rg2", "tau_perim", "tau_noncut", "tau_asph", "tau_holes"):
+        for key in ("rg2", "rg", "asph", "perim", "noncut", "holes", "cycles", "leaves", "deg1", "deg2", "deg3", "deg4"):
             row[key], row[key + "_err"] = combine(ch, key)
+        # autocorrelation times: plain mean over chains (their error bars scale with the estimate
+        # itself, so inverse-variance weights would favour whichever chain came out low)
+        for key in ("tau_rg2", "tau_perim", "tau_noncut", "tau_asph", "tau_holes"):
+            row[key] = float(np.mean([c[key] for c in ch]))
+            row[key + "_err"] = float(np.sqrt(sum(c[key + "_err"] ** 2 for c in ch)) / len(ch))
+        row["burn_n"] = float(np.mean([c["burn_moves"] for c in ch]) / n)
         row["sec_per_move"] = float(np.mean([c["sec_per_move"] for c in ch]))
         row["rg2_sd"] = float(np.mean([c["rg2_sd"] for c in ch]))
         row["rg_sd"] = float(np.mean([c["rg_sd"] for c in ch]))
@@ -115,6 +127,23 @@ def main():
         lam = ratio * (1 + 1.0 / r["n"])              # remove the n^-theta factor, theta = 1
         r["ratio"], r["ratio_err"] = float(ratio.mean()), float(ratio.std(ddof=1) / np.sqrt(len(ratio)))
         r["lam"], r["lam_err"] = float(lam.mean()), float(lam.std(ddof=1) / np.sqrt(len(lam)))
+    # a dedicated long run of local observables only (-mode means), folded into its size's estimate
+    ded = None
+    mf = os.path.join(ROOT, "runs", "means2000_C.txt")
+    if os.path.exists(mf):
+        lines = [l.split() for l in open(mf) if l.strip()]
+        nd, nsamp = int(lines[0][1]), float(lines[0][3])          # "n N samples S"
+        m = {l[0]: [float(v) for v in l[1:]] for l in lines[1:]}
+        # perimeter and removable-cell errors are anticorrelated at worst: add them linearly
+        lam_d = m["perim"][0] / (m["noncut"][0] + kappa) * (1 + 1.0 / nd)
+        err_d = lam_d * (m["perim"][1] / m["perim"][0] + m["noncut"][1] / m["noncut"][0])
+        ded = {"n": nd, "samples": nsamp, "lam": lam_d, "lam_err": err_d, "rg2": m["rg2"][0], "rg2_err": m["rg2"][1],
+               "perim": m["perim"][0], "noncut": m["noncut"][0]}
+        for r in sizes:
+            if r["n"] == nd:
+                r["lam_ladder"], r["lam_ladder_err"] = r["lam"], r["lam_err"]
+                w1, w2 = 1 / r["lam_err"] ** 2, 1 / err_d ** 2
+                r["lam"], r["lam_err"] = (w1 * r["lam"] + w2 * lam_d) / (w1 + w2), 1 / np.sqrt(w1 + w2)
     reloc = []
     rb = sorted({re.sub(r"\.part\d+\.txt$", "", f) for f in glob.glob(prod + "/ts_reloc_n*.part*.txt")}, key=lambda f: int(re.search(r"_n(\d+)", f).group(1)))
     for fn in rb:
@@ -125,7 +154,7 @@ def main():
         if s["neff"] < 15:
             continue
         reloc.append({k: s[k] for k in ("n", "tau_rg2", "tau_rg2_err", "tau_perim", "tau_perim_err", "rg2", "rg2_err", "sec_per_move", "neff")})
-    out = {"lambda_ref": LAMBDA, "kappa": kappa, "sizes": sizes, "reloc": reloc}
+    out = {"lambda_ref": LAMBDA, "kappa": kappa, "burn_n": BURN_N, "dedicated": ded, "sizes": sizes, "reloc": reloc}
     # the head-to-head from a square at n = 30,000
     p2 = os.path.join(ROOT, "prod2")
     for tag in ("old", "new"):

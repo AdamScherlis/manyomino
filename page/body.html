@@ -249,7 +249,7 @@
   a few dozen sizes can be read off two local statistics of a big sample. It is also a severe
   test: a sampler with any bias towards thin or fat shapes gets it wrong. Series analysis of
   exact counts gives &lambda;&nbsp;=&nbsp;4.0625696. Pooling the sizes from {{LAM_NMIN}} cells up,
-  the samples give <b>&lambda;&nbsp;=&nbsp;{{LAM}}&nbsp;&plusmn;&nbsp;{{LAM_ERR}}</b>.</p>
+  with one extra-long run at 2,000 cells, the samples give <b>&lambda;&nbsp;=&nbsp;{{LAM}}&nbsp;&plusmn;&nbsp;{{LAM_ERR}}</b>.</p>
 </section>
 
 <section>
@@ -273,6 +273,10 @@
     reference version make identical decisions: same seed, same trajectory, bit for bit, at
     30, 300 and 3,000 cells.</span></li>
     <li><b>Independent runs agree.</b><span>{{AGREE}}</span></li>
+    <li><b>How the big ones start.</b><span>Each size starts from a finished shape a quarter as
+    large, scaled up 2&times;, and then runs on. The scaled-up shape has the right overall form
+    but is made of 2&times;2 blocks; that fine structure takes about 40 moves per cell to decay,
+    so the first {{BURN_N}} moves per cell of every run (and never less than a fifth of it) are thrown away.</span></li>
     <li><b>Not established: a proof of fast mixing.</b><span>The n<sup>{{Z_NEW}}</sup> law is a
     measurement of one observable&rsquo;s autocorrelation, fitted over the sizes shown. Nothing
     rules out some other property of the shape relaxing more slowly, and the largest size

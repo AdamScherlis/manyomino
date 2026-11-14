@@ -116,7 +116,11 @@ def main():
     T["TAU_OLD_HERO"] = sci(tau_old_hero, 0)
     T["OLD_RATE"] = "million"
     T["OLD_YEARS"] = duration(tau_old_hero / 1e6)
-    T["TAU_NEW_COEF"] = f"{np.mean([r['tau_rg2'] / r['n'] for r in nw]):.0f}"
+    # tau / n: weighted mean in log space (relative errors, so a chain that came out low gets no extra weight)
+    lw = np.array([1 / max(r["tau_rg2_err"] / r["tau_rg2"], 0.03) ** 2 for r in nw])
+    tau_coef = float(np.exp((lw * np.log([r["tau_rg2"] / r["n"] for r in nw])).sum() / lw.sum()))
+    D["tau_coef"] = tau_coef
+    T["TAU_NEW_COEF"] = f"{tau_coef:.0f}"
     bench = {}
     bf = os.path.join(ROOT, "analysis", "bench.json")
     if os.path.exists(bf):
@@ -128,8 +132,10 @@ def main():
     _, cpe, _, _ = wfit(np.log([r["n"] for r in cs]), np.log([spm[r["n"]] * r["tau_rg2"] for r in cs]), [0.1] * len(cs))
     T["CPU_EXP"] = f"{cpe:.1f}"
     hero_row = next(r for r in sizes if r["n"] == hero_n)
-    T["CPU_HERO"] = duration(2 * hero_row["tau_rg2"] * spm[hero_n])
-    T["NEFF_HERO"] = commas(hero_row['moves'] / hero_row['tau_rg2'])
+    # at the largest size tau itself is poorly measured; use the fitted law there
+    T["CPU_HERO"] = duration(2 * tau_coef * hero_n * spm[hero_n])
+    T["NEFF_HERO"] = commas(hero_row['moves'] / (tau_coef * hero_n))
+    T["BURN_N"] = commas(D.get("burn_n", 300))
     D["cpu"] = [[r["n"], spm[r["n"]], r["tau_rg2"] * spm[r["n"]]] for r in sizes]
 
     # ---- nu

@@ -127,6 +127,6 @@ function Sampler(cells, lgW, seed) {
     sweep(v);
     return dist;
   }
-  return { n, X, Y, relocate, transplant, rg2, depths, stats, rnd, flash, setClock: t => { clock = t; } };
+  return { n, X, Y, relocate, transplant, rg2, depths, stats, rnd, flash, branch: B, setClock: t => { clock = t; } };
 }
 if (typeof module !== 'undefined') module.exports = { Sampler };
