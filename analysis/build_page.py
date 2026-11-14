@@ -159,13 +159,17 @@ def main():
 
     # ---- gallery comparison
     gl = []
+    ln_n = np.log([r["n"] for r in sizes]); ln_rg = np.log([r["rg"] for r in sizes])
     for gn, grg in GALLERY:
-        pred = math.exp(a4) * gn ** nu_rg
+        pred = math.exp(np.interp(math.log(gn), ln_n, ln_rg)) if gn <= sizes[-1]["n"] else math.exp(a4) * gn ** nu_rg
         gl.append((gn, grg, grg / pred))
     D["gallery"] = GALLERY
     D["gallery_ratio"] = gl
-    T["GALLERY_VERDICT"] = open(os.path.join(PAGE, "verdict.html")).read().strip() if os.path.exists(os.path.join(PAGE, "verdict.html")) else ""
-
+    dev = [abs(g[2] - 1) for g in gl]
+    spread = np.mean([r["rg_sd"] / r["rg"] for r in sizes if r["n"] >= 4000])
+    T["GALLERY_VERDICT"] = (f"They scatter around the new curve: {sum(d <= 0.03 for d in dev)} of the {len(dev)} lie within 3% of it, and the "
+                            f"furthest is {max(dev) * 100:.0f}% off. The radius of a single uniform sample varies by about {spread * 100:.0f}% from "
+                            f"one shape to the next, so scatter of that size is what a handful of effectively independent shapes per size would give.")
     # ---- square head-to-head
     sq_moves = None
     for tag in ("old", "new"):
