@@ -220,6 +220,13 @@ times slower than the radius. All of this is a lower bound on the true relaxatio
 agree with the ladder chains after burn-in; the 17 observables that are odd under a lattice
 symmetry average to zero.
 
+**A proof, of a weak kind.** [`proof/`](proof/README.md) shows that the relaxation time of this
+chain is at most n^(O(log n)): no property of the shape can take exponentially long to
+forget. The bound is far above what is measured, and the argument has not been reviewed.
+For shapes of up to 10 cells, `-mode trans` and `analysis/spectrum.py` compute the exact
+relaxation time from the full transition matrix: the slowest property of all is the shape's
+orientation, and the 60 observables capture 98.6% of it at 10 cells.
+
 What this does not cover: beyond 1,000 cells there is no independent sampler (the growth
 sampler's own count estimate fails from about 1,000 cells at these population sizes), and a
 slow mode outside the span of the 60 observables would not be seen.
@@ -252,6 +259,7 @@ src/enumerate.cpp      exact averages of them over every polyomino of n cells
 src/leath.cpp          exact percolation clusters of a given size
 src/grow.cpp           uniform polyominoes from a resampled population of growing clusters
 ref/manyomino_v1.cpp   naive reference implementation
+proof/                 a quasi-polynomial bound on the relaxation time, and its machine check
 scripts/               production ladders (resumable); convergence runs
 analysis/              autocorrelation times, data reduction, rendering, page build
 page/                  source of the explainer page
