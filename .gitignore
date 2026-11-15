@@ -17,3 +17,6 @@ video/out/
 /conv/
 conv_run.log
 /enumerate
+/surv/
+/spec/
+/manyomino_trans

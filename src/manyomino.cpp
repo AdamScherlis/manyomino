@@ -43,6 +43,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <unordered_map>
 #include <string>
 #include <unordered_set>
 #include "features.h"
@@ -781,6 +782,47 @@ int main(int argc, char **argv) {
              hist.size() - 1, (chi2 - (hist.size() - 1)) / std::sqrt(2.0 * (hist.size() - 1)));
     }
     printf("acc relocate %.4f  cutpaste %.4f\n", (double)S.accRel / std::max<u64>(1, S.nRel), (double)S.accCP / std::max<u64>(1, S.nCP));
+    return 0;
+  }
+
+  if (mode == "trans") {
+    // Count every transition between translation-normalised shapes, one move at a time, for sizes
+    // small enough to list all shapes.  analysis/spectrum.py turns the counts into the chain's
+    // transition matrix and its eigenvalues: the relaxation time of the slowest of ALL properties.
+    //   -out PREFIX   writes PREFIX.states (float64 rows: visits, features...) and
+    //                 PREFIX.trans (float64 triples: from, to, count)
+    std::unordered_map<std::string, u32> id; std::vector<std::string> keys; std::vector<u64> visits;
+    std::unordered_map<u64, u64> tr;
+    auto cur = [&]() -> u32 {
+      int xmin = 1 << 30, ymin = 1 << 30;
+      for (int i = 0; i < n; i++) { xmin = std::min(xmin, S.X[i]); ymin = std::min(ymin, S.Y[i]); }
+      std::vector<std::pair<int,int>> c;
+      for (int i = 0; i < n; i++) c.push_back({S.X[i] - xmin, S.Y[i] - ymin});
+      std::sort(c.begin(), c.end());
+      std::string key; for (auto &pp : c) { key.push_back((char)pp.first); key.push_back((char)pp.second); }
+      auto it = id.find(key);
+      if (it != id.end()) return it->second;
+      u32 k = (u32)keys.size(); id[key] = k; keys.push_back(key); visits.push_back(0); return k;
+    };
+    for (u64 m = 0; m < burn; m++) step();
+    u32 a = cur(); u64 acc = S.accRel + S.accCP;
+    for (u64 m = 0; m < moves; m++) {
+      step();
+      visits[a]++;
+      if (S.accRel + S.accCP != acc) { acc = S.accRel + S.accCP; u32 b = cur(); if (b != a) { tr[((u64)a << 32) | b]++; a = b; } }
+    }
+    Features F; std::vector<double> f; std::vector<int32_t> fx(n), fy(n);
+    FILE *fs = fopen((out + ".states").c_str(), "wb");
+    for (size_t k = 0; k < keys.size(); k++) {
+      for (int i = 0; i < n; i++) { fx[i] = keys[k][2 * i]; fy[i] = keys[k][2 * i + 1]; }
+      F.compute(fx.data(), fy.data(), n, f);
+      double v = (double)visits[k]; fwrite(&v, 8, 1, fs); fwrite(f.data(), 8, f.size(), fs);
+    }
+    fclose(fs);
+    FILE *ft = fopen((out + ".trans").c_str(), "wb");
+    for (auto &kv : tr) { double t[3] = {(double)(kv.first >> 32), (double)(kv.first & 0xffffffffULL), (double)kv.second}; fwrite(t, 8, 3, ft); }
+    fclose(ft);
+    printf("n=%d shapes=%zu moves=%" PRIu64 " distinct transitions=%zu\n", n, keys.size(), moves, tr.size());
     return 0;
   }
 

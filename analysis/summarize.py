@@ -100,7 +100,7 @@ def combine(chains, key):
 def main():
     prod = os.path.join(ROOT, "prod")
     hyb = {}
-    bases = sorted({re.sub(r"\.part\d+\.txt$", "", f) for f in glob.glob(prod + "/ts_[ABC]_n*.part*.txt")})
+    bases = sorted({re.sub(r"\.part\d+\.txt$", "", f) for f in glob.glob(prod + "/ts_[A-E]_n*.part*.txt")})
     for fn in bases:
         try:
             s = chain_summary(fn, burn_n=BURN_N)
