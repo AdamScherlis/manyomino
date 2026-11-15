@@ -124,10 +124,11 @@ struct Features {
       if (d == 0) noncut++;
       detach += d;
       for (int k = 0; k < 4; k++) if (d >= thr[k]) trunk[k]++;
-      if (L < cenL) { cenL = L; cen = v; }
+      // ties go to the lowest, then leftmost, cell: a property of the shape, not of the cell numbering
+      if (L < cenL || (L == cenL && (Y[v] < Y[cen] || (Y[v] == Y[cen] && X[v] < X[cen])))) { cenL = L; cen = v; }
     }
     // the pieces at the centroid cell
-    long pc[5] = {n - 1 - sepSum[cen], 0, 0, 0, 0}; int npc = 1;
+    long pc[8] = {n - 1 - sepSum[cen], 0, 0, 0, 0, 0, 0, 0}; int npc = 1;
     for (int k = 0; k < 4; k++) {
       const int32_t a = grid[at(cen) + nb[k]];
       if (a > 0 && par[a - 1] == cen && low[a - 1] >= disc[cen]) pc[npc++] = sub[a - 1];
@@ -141,7 +142,9 @@ struct Features {
         for (int k = 0; k < 4; k++) { const int32_t a = grid[at(v) + nb[k]]; if (a > 0 && dist[a - 1] < 0) { dist[a - 1] = dist[v] + 1; que.push_back(a - 1); } }
       }
       if (mean) *mean = tot / n;
-      return que.back();
+      int far = que.back();                 // farthest cell; ties to the lowest, then leftmost
+      for (size_t i = que.size(); i-- > 0 && dist[que[i]] == dist[que.back()];) { const int v = que[i]; if (Y[v] < Y[far] || (Y[v] == Y[far] && X[v] < X[far])) far = v; }
+      return far;
     };
     double dmean = 0;
     const int a = bfs(cen, &dmean); const int dmax = dist[a];
