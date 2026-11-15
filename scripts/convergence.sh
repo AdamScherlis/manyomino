@@ -1,7 +1,6 @@
 #!/bin/bash
-# Runs behind analysis/convergence.py: four cores, about three hours.  (The committed results were
-# produced by these commands launched in several pieces; this file collects them in one place.
-# The 500- and 2,000-cell chains originally ran with unrecorded random seeds.)
+# Runs behind analysis/convergence.py: four cores, about four hours.  (The committed results were
+# produced by these commands launched in several pieces; this file collects them in one place.)
 #
 #   exact_<n>[_p<p>]  exact averages over every polyomino of n cells, optionally weighted by
 #                     (1-p)^perimeter (src/enumerate.cpp);  e<n>[_p<p>]: the chain at that size
@@ -11,6 +10,8 @@
 #   u<n>_<A|B|C|D>    uniform chain at n cells, the full observable library every n moves, started
 #                     from the final shape of a production ladder (already equilibrated)
 #   s<n>_<bar|rect>   uniform chain started from a straight bar / a solid square
+#   m250_<k>          eight uniform chains at 250 cells from one shape, different seeds
+#   r0.5_250_<k>      eight more weighted chains at 250 cells, each from its own exact cluster
 set -u
 cd "$(dirname "$0")/.."
 g++ -O2 -std=c++17 -o manyomino_feat src/manyomino.cpp
@@ -36,7 +37,14 @@ grow() { ./grow -nmax $1 -pop $2 -kappa 1.8 -sizes $3 -seed $4 -out $D/$5 2> $D/
   tilt $PC 1000 0 300 205; tilt $PC 1000 1 300 206
   # positive control: the chain at a slightly wrong density, compared with the exact clusters at 0.5
   $M -load $D/x0.5_250_0000.bin -p 0.51 -pcp 0.4 -moves 1e18 -tsec 120 -every 250 -seed 207 -out $D/t0.51_250_0.ts -feat $D/t0.51_250_0.feat 2> $D/t0.51_250_0.log
-  uni 16000 A 1500 103 A; uni 16000 B 1500 104 B ) &
+  uni 16000 A 1500 103 A; uni 16000 B 1500 104 B
+  # more exact clusters at 250 cells, and a high-precision comparison at 60 cells
+  for k in 2 3 4; do ./leath -n 250 -p 0.5 -count 10000000 -tsec 840 -seed $((40+k)) -out $D/x0.5_250_s$k.feat 2> $D/x0.5_250_s$k.log; done
+  ./leath -n 60 -p 0.5 -count 100000000 -tsec 240 -seed 71 -out $D/x0.5_60.feat -snap $D/x0.5_60 -nsnap 2 2> $D/x0.5_60.log
+  $M -load $D/x0.5_60_0000.bin -p 0.5 -pcp 0.4 -moves 1e18 -tsec 420 -every 240 -seed 721 -out /dev/null -feat $D/t0.5_60_0.feat 2> $D/t0.5_60_0.log
+  ./leath -n 250 -p 0.5 -count 8 -seed 77 -out /dev/null -snap $D/y0.5_250 -nsnap 8
+  for i in 0 1 2 3 4 5 6 7; do $M -load $D/y0.5_250_000$i.bin -p 0.5 -pcp 0.4 -moves 1e18 -tsec 240 -every 1000 -seed $((950+i)) -out /dev/null -feat $D/r0.5_250_$i.feat 2> $D/r0.5_250_$i.log; done
+  for i in 1 2 3 4 5 6 7 8; do $M -load prod/ckpt_A_n250.bin -pcp 0.4 -moves 1e18 -tsec 240 -every 1000 -seed $((900+i)) -out /dev/null -feat $D/m250_$i.feat 2> $D/m250_$i.log; done ) &
 
 # ---- core 4: enumeration, short uniform chains, grown populations
 ( for n in 14 16; do ./enumerate $n > $D/exact_$n.txt; $M -n $n -pcp 0.4 -moves 4.001e8 -burn 100000 -every 200 -seed $((300+n)) -out /dev/null -feat $D/e$n.feat 2> $D/e$n.log; done

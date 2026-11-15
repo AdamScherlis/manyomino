@@ -17,18 +17,18 @@ def conv_report(kept_moves, hero_n, burn_n):
     C = json.load(open(fn))
     T = {}; tests = []; md = []
     zs = lambda rows, key="z": [[r["name"], round(r[key], 2)] for r in rows]
-    pct = lambda x: f"{100 * (math.exp(x) - 1):+.0f}%".replace("-", "−")
+    pct = lambda x: f"{100 * (math.exp(x) - 1):+.1f}%"
 
     # ---- the tests, in the order they are drawn
     for e in C["enum"]:
-        tests.append({"label": ("every shape" if not e["p"] else f"weighted, p = {e['p']:.3g}") + f"|{e['n']} cells", "z": zs(e["rows"]), "group": "enum",
+        tests.append({"label": ("every shape" if not e["p"] else f"weighted {e['p']:.3g}") + f"|{e['n']} cells", "z": zs(e["rows"]), "group": "enum",
                       "md": (f"all {e['count']:,} shapes of {e['n']} cells" + (f", weighted (1-p)^perimeter, p = {e['p']:.6g}" if e["p"] else ", uniform"),
                              f"{e['samples']:,} chain samples; precision {e['rel_precision']:.1e} sd")})
     for e in C["exact"]:
         n = int(re.search(r"n=(\d+)", e["tag"]).group(1)); p = float(re.search(r"p=([\d.]+)", e["tag"]).group(1))
         tests.append({"label": f"exact clusters|{n:,} cells", "z": zs(e["rows"]), "group": "exact", "n": n, "n_exact": e["n_exact"], "witness": e["auc_z"], "q": (e["q_n"], e["q_over2"], e["q_max"]),
                       "md": (f"{e['n_exact']:,} exact percolation clusters of {n:,} cells at p = {p:.6g}",
-                             f"{e['n_chain']:,} chain samples; learned test z = {e['auc_z']:+.2f}; quartiles of each distribution: {e['q_over2']} of {e['q_n']} beyond 2 s.e., largest {e['q_max']:.2f}")})
+                             f"{e['chains']} chain{'s' if e['chains'] > 1 else ''}" + (f" (chi2/dof between them {e['between_chains']:.2f})" if e.get('between_chains') else "") + f"; learned test z = {e['auc_z']:+.2f}; quartiles of each distribution: {e['q_over2']} of {e['q_n']} beyond 2 s.e., largest {e['q_max']:.2f}")})
     for g in C["growth"]:
         ok = abs(g["count_dev"]) < 3 * g["count_dev_se"]
         tests.append({"label": f"grown population|{g['n']:,} cells" + ("" if ok else " *"), "z": zs(g["rows"], "t"), "kind": "chain" if ok else "strained", "group": "growth",
@@ -102,7 +102,8 @@ def conv_report(kept_moves, hero_n, burn_n):
     T["CV_BURN_SLOW"] = f"{burn_n / tau_mode:.0f}"
     if sc:
         x, xe = sc["single"]["exponent"], sc["single"]["err"]
-        T["CV_SLOW_TREND"] = (f"Unlike the radius&rsquo;s, this time is still creeping up with size, roughly as n<sup>{1 + x:.2f}</sup> (&plusmn;&nbsp;{xe:.2f}) from 1,000 cells up. If that "
+        T["CV_SLOW_TREND"] = (f"Unlike the radius&rsquo;s, this time is still creeping up with size, roughly as n<sup>{1 + x:.2f}</sup> (&plusmn;&nbsp;{xe:.2f}) from 1,000 cells up, though the two largest sizes "
+                              f"would also fit a time that has levelled off. If the growth "
                               f"continued to {hero_n:,} cells it would reach about {slow_hi:.0f} moves per cell there, and the largest runs would be about {kept_moves / (slow_hi * hero_n):.0f} "
                               f"relaxation times long instead." if x > 2 * xe else
                               f"A fit from 1,000 cells up gives n<sup>{1 + x:.2f}</sup> (&plusmn;&nbsp;{xe:.2f}): no significant growth beyond proportionality to size.")
@@ -132,13 +133,16 @@ def conv_report(kept_moves, hero_n, burn_n):
                        f"also covers the shape of each distribution, at its quartiles: {qo} of {qn} outside two standard errors, the largest {qm:.1f}. A last kind of test looks for differences "
                        f"that no single measurement shows. A small neural network is trained to tell the walk&rsquo;s shapes from the reference&rsquo;s, then scored on shapes it has "
                        f"not seen. Against the exact clusters it does no better than chance at any size: "
-                       + (f"its best margin over a coin flip is {wit:.1f} standard errors." if wit > 0.05 else "it never beats a coin flip."))
+                       + (f"its best margin over a coin flip is {wit:.1f} standard errors." if wit > 0.05 else "it never beats a coin flip.")
+                       + " (The 250-cell cluster row was first run with five chains, and one measurement stood 3.6 standard errors out. Eight more chains, "
+                         "with more than twice the data, did not reproduce it; the row shows all thirteen.)")
     other = []
     st16 = next((s for s in C.get("starts", []) if s["n"] == 16000), None) or (C.get("starts") or [None])[-1]
     if st16:
         other.append(f"The third attack starts the walk somewhere absurd: a straight bar of {st16['n']:,} cells, and a solid square. After {st16['burn']:,} moves per cell both have become "
                      f"indistinguishable from the runs that came up the size ladder: of {st16['features']} measurements, {st16['z_over2']} differ by more than two standard errors, the largest by "
-                     f"{st16['z_max']:.1f}, and the network scores {abs(st16['witness_z']):.1f} standard errors from chance.")
+                     f"{st16['z_max']:.1f}, and the network "
+                     + ("cannot tell them apart." if st16["witness_z"] < 2 else f"tells them apart at {st16['witness_z']:.1f} standard errors, which is unexplained."))
     if C.get("symmetry"):
         z = [r["z"] for s in C["symmetry"] for r in s["rows"]]; ss = _stats(z); sy = C["symmetry"]
         other.append(f"There is also a reference that costs nothing. A polyomino and its mirror image are equally likely, so {sy[0]['features']} of the measurements must average exactly zero "
@@ -148,6 +152,11 @@ def conv_report(kept_moves, hero_n, burn_n):
             other.append(f"That largest one, at {rt['n']:,} cells, was put to a second test: two fresh runs at the same size, not used to find it, give the same average as "
                          f"{rt['second']:+.2f}&nbsp;&plusmn;&nbsp;{rt['second_se']:.2f} of its spread, against {rt['first']:+.2f}&nbsp;&plusmn;&nbsp;{rt['first_se']:.2f} the first time. "
                          + ("It did not repeat." if abs(rt["z_second"]) < 2 else "It repeated, which is unexplained."))
+    mu = C.get("multi")
+    if mu:
+        other.append(f"Last, {mu['chains']} runs at {mu['n']} cells were started from one and the same shape with different random numbers, {mu['moves'] / 1e9:.0f} billion moves in all. "
+                     f"If some hidden property were stuck, their averages would differ by more than their error bars allow. The scatter between runs, relative to those error "
+                     f"bars, is {mu['chi2_mean']:.2f} averaged over the {mu['features']} measurements, where 1 is what correct error bars give.")
     T["CV_OTHER"] = " ".join(other).replace("+-", "+").replace("-0.", "&minus;0.")
 
     # ---- convergence.md
@@ -163,6 +172,14 @@ def conv_report(kept_moves, hero_n, burn_n):
     for g in C["growth"] + C.get("growth_small", []):
         md.append(f"| {g['n']:,} | {round(g['population'], -2):,} | {g['replicas']} | {100 * (math.exp(g['count_dev']) - 1):+.1f}% ± {100 * g['count_dev_se']:.1f}% | "
                   f"{sum(g['ancestors_m2']) / len(g['ancestors_m2']):,.0f} | {g['t_rms']:.2f} | {g['t_max']:.2f} |")
+    if C.get("multi"):
+        mu = C["multi"]
+        md += ["", f"Eight independent chains at {mu['n']} cells from one starting shape ({mu['moves']:.2g} moves in all): chi-square of the chain means about their mean, per degree "
+               f"of freedom, averaged over {mu['features']} observables: {mu['chi2_mean']:.2f} (largest {mu['chi2_max']:.2f}; 1 if the batch-means errors are right)."]
+    if C.get("retest"):
+        rt = C["retest"]
+        md += ["", f"The largest symmetry violation ({rt['name']} at {rt['n']:,} cells, {rt['first']:+.3f} ± {rt['first_se']:.3f} of its standard deviation) was measured again on two "
+               f"fresh chains at that size: {rt['second']:+.3f} ± {rt['second_se']:.3f}."]
     md += ["", "Autocorrelation times in moves per cell (integrated, Sokal window), two independent chains per size:", "",
            "| cells | samples (one per n moves) | Rg² | slowest single observable | slowest combination found (held out) | A-vs-B learned test z |", "|---:|---:|---:|---:|---:|---:|"]
     abz = {a["n"]: a["z"] for a in ab}

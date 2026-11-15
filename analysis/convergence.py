@@ -110,17 +110,41 @@ def witness_test(ref, chains, ref_is_chain=False, max_train=100000, seed=0):
     return {"z": (mc - mr) / math.hypot(sr, sc), "auc": auc(np.r_[s0, s1], np.r_[np.zeros(k), np.ones(k)]), "train": int(2 * n)}
 
 
-def chain(fn, burn=0.0):
-    names, lead, X = load(fn, 1)
-    k = int(len(X) * burn)
-    return names, X[k:]
+def chain(fn, burn=0.0, max_rows=None):
+    """feature rows of one chain; with max_rows, every k-th row so that at most that many are kept
+    (the long chains at 250 cells are sampled far more often than their autocorrelation time)"""
+    names = open(fn + ".names").read().split()
+    a = np.memmap(fn, dtype=np.float64, mode="r")
+    a = a[: len(a) // len(names) * len(names)].reshape(-1, len(names))
+    a = a[int(len(a) * burn):]
+    k = 1 if not max_rows else max(1, -(-len(a) // max_rows))
+    return names[1:], np.array(a[::k, 1:])
+
+
+def chain_moves(fn):
+    """number of moves a chain file covers (first column of its last row)"""
+    k = len(open(fn + ".names").read().split())
+    a = np.memmap(fn, dtype=np.float64, mode="r")
+    return float(a[(len(a) // k - 1) * k])
+
+
+def between_chains(chains, cols=None):
+    """Do independent chains agree within their own error bars?  For every observable, chi-square
+    of the chain means about their weighted mean, per degree of freedom (1 if the errors are right)."""
+    out = []
+    for j in range(chains[0].shape[1]) if cols is None else cols:
+        xs = [c[:, j] for c in chains]
+        if np.concatenate(xs).std() == 0: continue
+        t = float(np.mean([tau_of(x) for x in xs])); ms = np.array([x.mean() for x in xs]); ses = np.array([batch_se(x, t) for x in xs])
+        w = 1 / ses ** 2; mu = (w * ms).sum() / w.sum(); out.append(float((((ms - mu) / ses) ** 2).sum() / (len(xs) - 1)))
+    return out
 
 
 def compare_exact(tag, exact_fn, chain_fns, label):
-    names, _, E = load(exact_fn, 1)
-    chains = [chain(f)[1] for f in chain_fns]
-    C = np.vstack(chains)
-    wt_ = np.array([len(c) for c in chains], float); wt_ /= wt_.sum()       # chains weighted by their length
+    fns = [exact_fn] if isinstance(exact_fn, str) else exact_fn         # one or several runs of leath
+    names = load(fns[0], 1)[0]; E = np.vstack([load(f, 1)[2] for f in fns])
+    chains = [chain(f, max_rows=400000)[1] for f in chain_fns]
+    wt_ = np.array([chain_moves(f) for f in chain_fns], float); wt_ /= wt_.sum()       # chains weighted by their length in moves
     rows = []; taus = []
     for j, nm in enumerate(names):
         if E[:, j].std() == 0 and C[:, j].std() == 0:
@@ -143,15 +167,15 @@ def compare_exact(tag, exact_fn, chain_fns, label):
             r["zq"].append((fc - fe) / math.hypot(se, math.sqrt(fe * (1 - fe) / len(E))))
     zq = np.array([z for r in rows for z in r["zq"]])
     wt = witness_test(E, chains); a, z, ntot = wt["auc"], wt["z"], wt["train"]
-    zs = np.array([r["z"] for r in rows])
-    out = {"tag": tag, "label": label, "n_exact": len(E), "n_chain": len(C), "tau_max": max(taus),
+    zs = np.array([r["z"] for r in rows]); bc = between_chains(chains, [r["j"] for r in rows])
+    out = {"tag": tag, "label": label, "chains": len(chains), "between_chains": float(np.mean(bc)) if len(chains) > 1 else None, "n_exact": len(E), "n_chain": int(sum(len(c) for c in chains)), "tau_max": max(taus),
            "features": len(rows), "z_rms": float(np.sqrt((zs ** 2).mean())), "z_max": float(np.abs(zs).max()), "z_over2": int((np.abs(zs) > 2).sum()),
            "z_over3": int((np.abs(zs) > 3).sum()), "q_n": len(zq), "q_rms": float(np.sqrt((zq ** 2).mean())), "q_max": float(np.abs(zq).max()), "q_over2": int((np.abs(zq) > 2).sum()),
            "auc": a, "auc_z": z, "auc_n": ntot, "rows": [{k: v for k, v in r.items() if k != "j"} for r in rows]}
     worst = sorted(rows, key=lambda r: -abs(r["z"]))[:3]
-    print(f"{tag}: exact {len(E)}, chain {len(C)}; means z rms {out['z_rms']:.2f} max {out['z_max']:.2f} (|z|>2: {out['z_over2']}/{len(rows)}); "
+    print(f"{tag}: exact {len(E)}, chain {sum(len(c) for c in chains)}; means z rms {out['z_rms']:.2f} max {out['z_max']:.2f} (|z|>2: {out['z_over2']}/{len(rows)}); "
           f"quartiles z rms {out['q_rms']:.2f} max {out['q_max']:.2f} (|z|>2: {out['q_over2']}/{len(zq)}); learned test z = {z:+.2f} (AUC {a:.4f}); "
-          f"largest: " + ", ".join(f"{r['name']} {r['z']:+.2f}" for r in worst))
+          f"{len(chains)} chains" + (f", between-chain chi2/dof {out['between_chains']:.2f}" if len(chains) > 1 else "") + "; largest: " + ", ".join(f"{r['name']} {r['z']:+.2f}" for r in worst))
     return out
 
 
@@ -355,14 +379,14 @@ def main():
         sfx = f"_p{p}" if p else ""
         if os.path.exists(os.path.join(CONV, f"e{n}{sfx}.feat")) and os.path.getsize(os.path.join(CONV, f"exact_{n}{sfx}.txt")) > 100:
             R["enum"].append(compare_enum(n, p))
-    ex = lambda p, n: os.path.join(CONV, f"x{p}_{n}.feat")
-    tl = lambda p, n: sorted(glob.glob(os.path.join(CONV, f"t{p}_{n}_?.feat")))
+    ex = lambda p, n: sorted(glob.glob(os.path.join(CONV, f"x{p}_{n}.feat")) + glob.glob(os.path.join(CONV, f"x{p}_{n}_s?.feat")))
+    tl = lambda p, n: sorted(glob.glob(os.path.join(CONV, f"t{p}_{n}_?.feat")) + glob.glob(os.path.join(CONV, f"r{p}_{n}_?.feat")))
     quick = bool(os.environ.get("CONV_QUICK"))           # a fast partial pass, for testing the pipeline
-    for p, n in (("0.55", 500),) if quick else (("0.5", 250), ("0.55", 500), ("0.592746", 1000)):
-        if os.path.exists(ex(p, n)) and len(tl(p, n)) >= 2:
+    for p, n in (("0.55", 500),) if quick else (("0.5", 60), ("0.5", 250), ("0.55", 500), ("0.592746", 1000)):
+        if ex(p, n) and len(tl(p, n)) >= 1:
             R["exact"].append(compare_exact(f"p={p} n={n}", ex(p, n), tl(p, n), f"{n} cells at density {float(p):.3g}"))
     ctl = os.path.join(CONV, "t0.51_250_0.feat")
-    if os.path.exists(ctl) and os.path.exists(ex("0.5", 250)):
+    if os.path.exists(ctl) and ex("0.5", 250):
         R["control"] = compare_exact("control: chain at p=0.51 against exact p=0.5, n=250", ex("0.5", 250), [ctl], "control")
     uf = lambda n, c: os.path.join(CONV, f"u{n}_{c}.feat")
     have = lambda g: len(glob.glob(os.path.join(CONV, g + ".logz"))) >= 3
@@ -381,6 +405,12 @@ def main():
             R["ab"].append({"n": n, "auc": wt["auc"], "z": wt["z"]})
             print(f"   chain A against chain B: learned test z = {wt['z']:+.2f} (AUC {wt['auc']:.4f})")
             R["symmetry"].append(symmetry_test(n, [uf(n, "A"), uf(n, "B")]))
+    # eight chains from the same equilibrated shape with different random numbers
+    mf = sorted(glob.glob(os.path.join(CONV, "m250_?.feat")))
+    if len(mf) >= 4:
+        chs = [chain(f)[1] for f in mf]; bc = np.array(between_chains(chs))
+        R["multi"] = {"n": 250, "chains": len(chs), "moves": float(sum(chain_moves(f) for f in mf)), "features": len(bc), "chi2_mean": float(bc.mean()), "chi2_max": float(bc.max())}
+        print(f"{len(chs)} chains at n=250 from one start: between-chain chi2/dof over {len(bc)} observables: mean {bc.mean():.2f}, max {bc.max():.2f} ({len(chs) - 1} dof each)")
     # the largest symmetry violation, measured again on chains that were not used to find it
     if R["symmetry"]:
         zmax, nm, n = max((abs(r["z"]), r["name"], s["n"]) for s in R["symmetry"] for r in s["rows"])
