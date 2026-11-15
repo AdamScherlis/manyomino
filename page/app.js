@@ -194,15 +194,17 @@
     const C = DATA.conv, rows = C.tests, lim = 6;
     // one dot per observable, one row per test; a little vertical jitter so dots do not hide each other
     const jit = i => ((i * 0.6180339887) % 1 - 0.5) * 0.56;
-    const mk = ctl => rows.flatMap((t, r) => !!t.control === ctl ? t.z.map((z, i) => [Math.max(-lim, Math.min(lim, z[1])), rows.length - r + jit(i), 0, z[0], z[1], t.label]) : []);
+    const mk = kind => rows.flatMap((t, r) => (t.kind || 'chain') === kind ? t.z.map((z, i) => [Math.max(-lim, Math.min(lim, z[1])), rows.length - r + jit(i), 0, z[0], z[1], t.label.replace('|', ', ')]) : []);
     chart($('ch-z'), {
-      xlabel: 'difference from the reference, in standard errors', ylabel: '', xdomain: [-lim - 0.3, lim + 0.3], ydomain: [0.4, rows.length + 0.6],
-      height: 60 + 44 * rows.length, leftPad: 150, rightPad: 14, noTable: true,
+      xlabel: 'difference, in standard errors', ylabel: '', xdomain: [-lim - 0.3, lim + 0.3], ydomain: [0.4, rows.length + 1.05],
+      height: 64 + 40 * rows.length, leftPad: 124, rightPad: 14, noTable: true,
       yticks: rows.map((t, r) => [rows.length - r, t.label]),
-      vbands: [{ x0: -2, x1: 2, color: S3, label: 'within 2 standard errors' }],
-      aria: 'For each test, the difference between the chain and the reference for every observable, in standard errors',
+      vbands: [{ x0: -2, x1: 2, color: S3, label: 'within 2' }],
+      aria: 'For each test, the difference between the chain and the reference for every measurement, in standard errors',
       tip: p => `<b>${p[5]}</b><br>${p[3]}: ${p[4] >= 0 ? '+' : ''}${p[4].toFixed(2)}`,
-      series: [{ name: 'the chain', color: S1, r: 3.2, pts: mk(false) }, { name: 'deliberately wrong chain', color: S2, r: 3.2, pts: mk(true) }],
+      series: [{ name: 'the walk against a trusted reference', color: S1, r: 3, pts: mk('chain') },
+               { name: 'a walk made wrong on purpose', color: S2, r: 3, pts: mk('control') },
+               { name: 'reference that fails its own check', color: 'var(--mut)', r: 3, pts: mk('strained') }].filter(se => se.pts.length),
     });
     const sl = C.slow;
     chart($('ch-slow'), {
@@ -211,7 +213,7 @@
       aria: 'Autocorrelation time in moves per cell against size: the radius, the slowest single observable, and the slowest combination found',
       series: [
         { name: 'squared radius', color: S1, pts: sl.map(r => [r.n, r.rg2, r.rg2_err]), line: sl.map(r => [r.n, r.rg2]) },
-        { name: 'slowest single observable', color: S2, pts: sl.map(r => [r.n, r.single, r.single_err]), line: sl.map(r => [r.n, r.single]) },
+        { name: 'slowest single measurement', color: S2, pts: sl.map(r => [r.n, r.single, r.single_err]), line: sl.map(r => [r.n, r.single]) },
         { name: 'slowest combination found', color: S3, pts: sl.map(r => [r.n, r.mode, r.mode_err]), line: sl.map(r => [r.n, r.mode]) },
       ],
     });

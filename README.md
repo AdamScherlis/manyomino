@@ -20,7 +20,9 @@ relocation alone can reach every polyomino. The writeup, with pictures and a liv
 
 Relocation by itself is correct but slow: its autocorrelation time (for the squared radius of
 gyration) grows like `n^2.6` moves, because mass can only diffuse through the shape one cell
-at a time. With transplants it is about `15 n` moves. See [Results](#results).
+at a time. With transplants it is about `15 n` moves for the radius, and about `40 n` for the
+slowest property a deliberate search could find. See [Results](#results) and
+[Convergence checks](#convergence-checks).
 
 ## Build and run
 
@@ -98,6 +100,8 @@ Madras (J. Phys. A 25, 1992).
   restores the shape: no failures in millions of moves at sizes from 60 to 64,000.
 * Independent ladders from different seeds agree at every size.
 * Counting removable cells recovers Klarner's constant (below).
+* Samplers with no Markov chain agree with it on 60 observables: see
+  [Convergence checks](#convergence-checks).
 
 ## Results
 
@@ -130,6 +134,38 @@ With transplants: tau ∝ n^0.99 (±0.03), about 15 moves per cell.
 Size exponent from n ≥ 4,000: nu = 0.6402 ± 0.0014 (literature 0.6412 ± 0.0005).
 Klarner's constant from n ≥ 1,000: lambda = 4.0619 ± 0.0006 (accepted 4.0625696; chi-square of the sizes about their mean 14.0 for 10 degrees of freedom, error scaled accordingly).
 
+## Convergence checks
+
+There is no proof that this chain mixes fast, and the radius of gyration could in principle
+relax quickly while something else lags. `scripts/convergence.sh` and `analysis/convergence.py`
+attack that from three sides, using 60 observables per shape (`src/features.h`: moments of the
+mass distribution to order 6, radial profile, local pattern counts, holes, the cut structure
+of the shape, graph distances).
+
+**1. References with no Markov chain.** Exact enumeration of all 7,204,874 / 104,592,937
+polyominoes of 14 / 16 cells (`src/enumerate.cpp`), uniform and percolation-weighted. Exact
+independent percolation clusters of 250, 500 and 1,000 cells (`src/leath.cpp`), which have
+the law the chain samples with `-p`. Uniform polyominoes from grown, resampled populations
+(`src/grow.cpp`: each polyomino with a marked cell has exactly one growth history, so
+importance weights are exact; a look-ahead tilt `kappa^(untried sites)` keeps the weights
+flat). A chain run at the wrong density is the positive control.
+
+<!-- convergence-table -->
+
+**2. A search for slow modes.** The autocorrelation time of every observable, and of the
+slowest linear combinations of the observables and their squares (time-lagged component
+analysis, fitted on one chain and timed on an independent one). The slowest thing found is
+the trunk of the shape (number of cells whose removal detaches at least 1%), about three
+times slower than the radius. All of this is a lower bound on the true relaxation time.
+
+**3. Other starts and symmetry.** Chains started from a straight bar and from a solid square
+agree with the ladder chains after burn-in; the 17 observables that are odd under a lattice
+symmetry average to zero.
+
+What this does not cover: beyond 1,000 cells there is no independent sampler (the growth
+sampler's own count estimate fails from about 1,000 cells at these population sizes), and a
+slow mode outside the span of the 60 observables would not be seen.
+
 ## Music video
 
 `video/` renders the chain as a two-minute music video. A 50×50 square is dissolved by the two
@@ -153,8 +189,12 @@ ffmpeg -i out/silent.mp4 -i music.wav -c:v copy -c:a aac -shortest video.mp4
 
 ```
 src/manyomino.cpp      the sampler
+src/features.h         60 shape observables (geometry, local counts, cut structure, graph distances)
+src/enumerate.cpp      exact averages of them over every polyomino of n cells
+src/leath.cpp          exact percolation clusters of a given size
+src/grow.cpp           uniform polyominoes from a resampled population of growing clusters
 ref/manyomino_v1.cpp   naive reference implementation
-scripts/               production ladders (resumable)
+scripts/               production ladders (resumable); convergence runs
 analysis/              autocorrelation times, data reduction, rendering, page build
 page/                  source of the explainer page
 video/                 music video generator

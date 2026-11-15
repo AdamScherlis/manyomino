@@ -64,6 +64,9 @@ def prep(fn):
     return x, y, nbr, c, d, diam
 
 
+from conv_report import conv_report
+
+
 def main():
     site = sys.argv[1]
     art = sys.argv[2] if len(sys.argv) > 2 else None
@@ -207,6 +210,10 @@ def main():
     D.setdefault("square_old", [[1e5, 5000]]); D.setdefault("square_new", [[1e5, 5000]]); D.setdefault("square_eq", {"rg": 320, "rg_sd": 60})
     T["DATE"] = datetime.date.today().strftime("%B %Y")
     json.dump(D, open(os.path.join(ROOT, "analysis", "data.json"), "w"), indent=1)
+    # convergence checks (analysis/convergence.py): chart data, text numbers, analysis/convergence.md
+    conv, CT, _ = conv_report(kept, hero_n, D.get("burn_n", 300))
+    if conv:
+        D["conv"] = conv; T.update(CT)
 
     body = open(os.path.join(PAGE, "body.html")).read()
     slim = {k: v for k, v in D.items() if k not in ("gallery_ratio",)}
@@ -221,7 +228,9 @@ def main():
 
     def fill(b, gallery_href):
         t = dict(T, GALLERY_HREF=gallery_href)
-        b = re.sub(r"\{\{(\w+)\}\}", lambda m: str(t[m.group(1)]), b)
+        missing = sorted({k for k in re.findall(r"\{\{(\w+)\}\}", b) if k not in t})
+        if missing: print("MISSING TOKENS:", missing, file=sys.stderr)
+        b = re.sub(r"\{\{(\w+)\}\}", lambda m: str(t.get(m.group(1), "??")), b)
         return b
 
     full = f"""<!doctype html>

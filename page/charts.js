@@ -62,7 +62,7 @@ function chart(el, cfg) {
       if (log && Math.abs(t - Math.round(t)) < 1e-9 && (t >= 6 || t <= -4)) return `10<tspan dy="-5" font-size="8.5">${Math.round(t)}</tspan>`;
       return fmtNum(log ? Math.pow(10, t) : t);
     };
-    yt.forEach(t => { const y = H - m.b - (t - y0) / (y1 - y0) * (H - m.t - m.b); s += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}"/><text class="tick" x="${m.l - 8}" y="${y + 4}" text-anchor="end">${ylab ? ylab.get(t) : lab(t, cfg.ylog, cfg.yfmt)}</text>`; });
+    yt.forEach(t => { const y = H - m.b - (t - y0) / (y1 - y0) * (H - m.t - m.b); s += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}"/>${ylab ? String(ylab.get(t)).split('|').map((p, i, a) => `<text class="tick" x="${m.l - 8}" y="${y + 4 + (a.length > 1 ? (i ? 8 : -6) : 0)}" text-anchor="end">${p}</text>`).join('') : `<text class="tick" x="${m.l - 8}" y="${y + 4}" text-anchor="end">${lab(t, cfg.ylog, cfg.yfmt)}</text>`}`; });
     (cfg.vbands || []).forEach(b => {
       s += `<rect x="${X(b.x0)}" width="${X(b.x1) - X(b.x0)}" y="${m.t}" height="${H - m.t - m.b}" fill="${b.color}" opacity=".13"/>`;
       if (b.label) s += `<text class="dlabel" x="${(X(b.x0) + X(b.x1)) / 2}" y="${m.t + 12}" text-anchor="middle">${b.label}</text>`;

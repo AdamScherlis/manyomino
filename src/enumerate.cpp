@@ -1,6 +1,7 @@
 // Exact averages of every observable in features.h over ALL fixed polyominoes of N cells
 // (Redelmeier's algorithm).  Ground truth for the samplers at sizes where listing is possible.
-//   enumerate N > exact_N.txt        lines: name mean sd      (first line: count)
+//   enumerate N [P] > exact_N.txt    lines: name mean sd      (first line: count)
+// With P, each shape is weighted by (1-P)^perimeter: the law of a size-N site-percolation cluster.
 #include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
@@ -8,6 +9,7 @@
 static int N; static const int W = 64;
 static uint8_t reached[W * W]; static int32_t X[64], Y[64];
 static std::vector<long double> S1, S2; static uint64_t total = 0;
+static long double PW[256], SW = 0; static int iperim = 0;
 static Features F; static std::vector<double> f;
 static int untried[4096];
 static const int DX[4] = {1, 0, -1, 0}, DY[4] = {0, 1, 0, -1};
@@ -18,7 +20,8 @@ static void rec(int ubegin, int uend, int p) {
     X[p] = x; Y[p] = y;
     if (p + 1 == N) {
       total++; F.compute(X, Y, N, f);
-      for (size_t i = 0; i < f.size(); i++) { S1[i] += f[i]; S2[i] += (long double)f[i] * f[i]; }
+      const long double w = PW[(int)lround(f[iperim] * N)]; SW += w;
+      for (size_t i = 0; i < f.size(); i++) { S1[i] += w * f[i]; S2[i] += w * (long double)f[i] * f[i]; }
       continue;
     }
     int added = 0;
@@ -37,12 +40,15 @@ static void rec(int ubegin, int uend, int p) {
 }
 int main(int argc, char **argv) {
   N = atoi(argv[1]);
+  const double P = argc > 2 ? atof(argv[2]) : 0;
+  for (int t = 0; t < 256; t++) PW[t] = powl(1 - P, t);
+  while (Features::names()[iperim] != "perim") iperim++;
   S1.assign(Features::names().size(), 0); S2.assign(Features::names().size(), 0);
   const int o = 1 * W + W / 2; reached[o] = 1; untried[0] = o;
   rec(0, 1, 0);
   printf("count %" PRIu64 "\n", total);
   for (size_t i = 0; i < S1.size(); i++) {
-    long double m = S1[i] / total, v = S2[i] / total - m * m;
+    long double m = S1[i] / SW, v = S2[i] / SW - m * m;
     printf("%s %.12Lf %.12Lf\n", Features::names()[i].c_str(), m, sqrtl(v > 0 ? v : 0));
   }
   return 0;

@@ -192,8 +192,9 @@
   <p>With transplants in the mix the autocorrelation time drops to about
   <b>{{TAU_NEW_COEF}} moves per cell</b>, growing like n<sup>{{Z_NEW}}</sup> over almost four
   decades of size. The perimeter, the number of holes and the elongation of the shape all
-  relax at the same rate or faster. A walk cannot do much better than that: it has to touch
-  every cell at least once.</p>
+  relax at the same rate or faster. (One property turns out to be about {{CV_SLOW_RATIO}} times
+  slower; it took a deliberate search to find, <a href="#doubt">below</a>.) A walk cannot do much
+  better than this: it has to touch every cell at least once.</p>
   <h3>Making a transplant cheap</h3>
   <p>A move that picks up half the shape sounds expensive, and done naively it is: finding
   the branch means flood-filling it. But most proposed transplants fail, and usually fail
@@ -258,14 +259,103 @@
     <div id="ch-lam"></div></div>
 </section>
 
+<section class="measure" id="doubt">
+  <h2>Could the samples still be subtly wrong?</h2>
+  <p>Everything above assumes that by the time a shape is recorded, the walk has forgotten where
+  it started. The evidence so far is the memory of a single number, the radius. A walk can pass
+  that test and still fail: if some other property of the shape relaxed far more slowly, every
+  sample would be slightly atypical in a way the radius never shows. No theorem rules this out
+  for this walk, so the claim has to be attacked from outside. Three attacks follow.</p>
+
+  <h3>References that have nothing to forget</h3>
+  <p>First, a way to look at a shape from many sides: {{CV_NOBS}} measurements covering its overall
+  geometry (every moment of its mass up to sixth order, how the mass is spread radially), its
+  fine grain (each local pattern, holes, loops) and its skeleton (which cells hold it together,
+  how it divides at its centre, the length of its trunk, distances measured along the shape).
+  Then three sources of shapes that involve no walk at all.</p>
+  <ul class="checks">
+    <li><b>Every shape.</b><span>At 14 and 16 cells a computer can list them all,
+    {{CV_COUNT14}} and {{CV_COUNT16}} of them, and average each measurement exactly.</span></li>
+    <li><b>Exact clusters.</b><span>Colour each square of a grid black with probability p. The
+    black cluster around a chosen square, on the occasions it has exactly n cells, is an exact
+    draw from a known distribution: each shape weighted by (1&nbsp;&minus;&nbsp;p) to the power of
+    its perimeter. The walk can be set to sample that distribution instead of the uniform one.
+    Growing clusters until one stops at the right size is slow, but each is independent of the
+    last: {{CV_EXACT250}} at 250 cells, {{CV_EXACT500}} at 500, {{CV_EXACT1000}} at 1,000.</span></li>
+    <li><b>Grown populations.</b><span>For uniform shapes, 200,000 clusters are grown side by
+    side, a cell at a time. Each carries a weight that corrects for how it was grown; heavy ones
+    are cloned, light ones culled. The weights also add up to an estimate of how many polyominoes
+    exist, which is known, so this reference checks itself.</span></li>
+  </ul>
+  <p>Each dot below is one measurement in one test: the walk&rsquo;s average minus the
+  reference&rsquo;s, in units of the standard error of that difference. If the walk is right,
+  the dots in a row should scatter like a bell curve of width one.</p>
+</section>
+
+<section>
+  <div class="chart"><h3>The walk against references with no memory</h3>
+    <p class="sub">One dot per measurement. Dots beyond &plusmn;6 are drawn at the edge. Rows marked * use a reference that fails its own check.</p>
+    <div id="ch-z"></div></div>
+</section>
+
+<section class="measure">
+  <p>{{CV_VERDICT}}</p>
+  <p>The tests can see small errors. The bottom row is the walk set to p&nbsp;=&nbsp;0.51 and
+  compared with exact clusters at p&nbsp;=&nbsp;0.50, a change that moves the most sensitive
+  measurement by {{CV_CTL_SHIFT}} of its natural spread. It is caught at {{CV_CTL_MAX}} standard
+  errors. The grown populations pin the uniform walk at 250 cells to within {{CV_GPREC250}}% of
+  each measurement&rsquo;s spread.</p>
+  <p>The grown populations also show what a failing sampler looks like. Their count of
+  polyominoes comes out within {{CV_GCOUNT250}} of the known value at 250 cells and
+  {{CV_GCOUNT500}} at 500. At 1,000 cells it is {{CV_GCOUNT1000}}, and at 2,000,
+  {{CV_GCOUNT2000}}: by then each population descends from only a few hundred early ancestors,
+  and its averages drift away from the walk&rsquo;s (the two starred rows). The walk has a check
+  of the same kind, Klarner&rsquo;s constant above, and passes it at every size. So the starred
+  rows say the reference failed, not the walk; but it also means that beyond 1,000 cells there
+  is no independent reference left.</p>
+
+  <h3>A search for the slowest property</h3>
+  <p>The second attack goes after the slow property directly. For each of the {{CV_NOBS}}
+  measurements, at sizes up to {{CV_SLOW_NMAX}} cells, how long does the walk remember it? Most
+  are forgotten as fast as the radius or faster. One family is not: the length of the
+  shape&rsquo;s trunk, counted as the cells whose removal would split off at least 1% of the
+  shape. It takes about {{CV_TAU_SINGLE}} moves per cell to forget, against {{CV_TAU_RG}} for the
+  radius.</p>
+  <p>Then a search over combinations. A standard method finds the weighted sum of all the
+  measurements and their squares that changes most slowly along one run; its memory is then timed
+  on a second, independent run, so that a pattern fitted to noise does not count. The slowest
+  combinations it finds are built from the trunk again and from one other thing, the size of
+  the largest clump of cells held together by loops. They take about {{CV_TAU_MODE}} moves
+  per cell.</p>
+</section>
+
+<section>
+  <div class="chart"><h3>How long each property is remembered</h3>
+    <p class="sub">Autocorrelation time divided by the number of cells. A flat line means the cost per independent sample grows in proportion to size.</p>
+    <div id="ch-slow"></div></div>
+</section>
+
+<section class="measure">
+  <p>So the worry was partly right. There is a slower property, and the honest relaxation time
+  of this walk is about {{CV_TAU_MODE}} moves per cell, not {{TAU_NEW_COEF}}. No measured
+  average changes, because the error bars never relied on the radius&rsquo;s time: they come from
+  the scatter of blocks at least 70 moves per cell long. What changes is the accounting. An independent sample costs about {{CV_SLOW_RATIO}} times
+  the figure quoted earlier. The
+  {{BURN_N}} moves per cell discarded at the start of each run are about {{CV_BURN_SLOW}}
+  relaxation times, not 20. And the {{NHERO}}-cell runs are about {{NEFF_HERO_SLOW}} relaxation
+  times long after burn-in, not {{NEFF_HERO}}. {{CV_SLOW_TREND}}</p>
+  <h3>Starting somewhere absurd</h3>
+  <p>{{CV_OTHER}}</p>
+</section>
+
 <section class="measure">
   <h2>What is and is not established</h2>
   <ul class="checks">
     <li><b>Exactly uniform on small shapes.</b><span>For every size up to 9 cells the walk visits
     all of the fixed polyominoes (9,910 of them at n&nbsp;=&nbsp;9) with frequencies that pass a
-    chi-square test against uniform, for each kind of move and for the mixture. Its averages
-    of perimeter, removable cells and squared radius at n&nbsp;=&nbsp;9 match exact enumeration to
-    five parts in 100,000.</span></li>
+    chi-square test against uniform, for each kind of move and for the mixture. At 14 and 16
+    cells its averages of all {{CV_NOBS}} measurements match exact enumeration, each to within
+    {{CV_ENUM_PREC}}% of that measurement&rsquo;s spread.</span></li>
     <li><b>Every move can be undone.</b><span>A self-test replays the reverse of each accepted move
     and checks that it is accepted and restores the shape. Across four million relocations and
     half a million transplants, at sizes from 60 to 64,000 cells, it never failed.</span></li>
@@ -277,10 +367,15 @@
     large, scaled up 2&times;, and then runs on. The scaled-up shape has the right overall form
     but is made of 2&times;2 blocks; that fine structure takes about 40 moves per cell to decay,
     so the first {{BURN_N}} moves per cell of every run (and never less than a fifth of it) are thrown away.</span></li>
-    <li><b>Not established: a proof of fast mixing.</b><span>The n<sup>{{Z_NEW}}</sup> law is a
-    measurement of one observable&rsquo;s autocorrelation, fitted over the sizes shown. Nothing
-    rules out some other property of the shape relaxing more slowly, and the largest size
-    rests on about {{NEFF_HERO}} autocorrelation times of running after burn-in, across two chains.</span></li>
+    <li><b>Agrees with samplers that have no memory.</b><span>Up to 500 cells for uniform shapes
+    and 1,000 cells for percolation-weighted ones, on all {{CV_NOBS}} measurements
+    (<a href="#doubt">above</a>).</span></li>
+    <li><b>Not established: a proof of fast mixing.</b><span>The relaxation times are
+    measurements. The search for slow properties covered {{CV_NOBS}} measurements and their
+    combinations at sizes up to {{CV_SLOW_NMAX}} cells; a property outside that list could still
+    be slower. Beyond 1,000 cells no independent sampler is available, so the larger sizes rest
+    on the walk&rsquo;s own internal checks. The largest size rests on about {{NEFF_HERO_SLOW}}
+    relaxation times of running after burn-in, across two chains.</span></li>
   </ul>
   <p>Code, validation scripts and the data behind every chart are in
   <a href="https://github.com/AdamScherlis/manyomino">AdamScherlis/manyomino</a>.</p>
