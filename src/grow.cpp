@@ -41,15 +41,16 @@ struct Rng {
 struct Walker {
   std::vector<u32> cells, blocked;      // grid indices, cells in breadth-first order
   int head = 0;                         // cells before this one have no untried neighbours
+  int G = 4;                            // untried neighbour sites of the cluster
   double lw = 0;                        // log weight since the last resampling; -inf if closed off
   std::vector<u32> anc;                 // ancestor label at each checkpoint size
 };
 
 int main(int argc, char **argv) {
-  int nmax = 1000, pop = 10000, K = 4; double essFrac = 0.6; u64 seed = 1; std::string out, sizesArg = "";
+  int nmax = 1000, pop = 10000, K = 4; double essFrac = 0.6, kappa = 1.0; u64 seed = 1; std::string out, sizesArg = "";
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i]; auto nxt = [&]() { return std::string(argv[++i]); };
-    if (a == "-nmax") nmax = atoi(nxt().c_str()); else if (a == "-ess") essFrac = atof(nxt().c_str());
+    if (a == "-nmax") nmax = atoi(nxt().c_str()); else if (a == "-ess") essFrac = atof(nxt().c_str()); else if (a == "-kappa") kappa = atof(nxt().c_str());
     else if (a == "-pop") pop = (int)atof(nxt().c_str()); else if (a == "-seed") seed = strtoull(nxt().c_str(), 0, 10);
     else if (a == "-step") K = atoi(nxt().c_str()); else if (a == "-out") out = nxt();
     else if (a == "-sizes") sizesArg = nxt();
@@ -71,7 +72,8 @@ int main(int argc, char **argv) {
   if (fo) { FILE *fn = fopen((out + ".names").c_str(), "w"); fprintf(fn, "m logw anc10 anc2"); for (auto &s : Features::names()) fprintf(fn, " %s", s.c_str()); fprintf(fn, "\n"); fclose(fn); }
   auto now = []() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); };
   const double t0 = now(); double logZ = 0;                 // log of (sum over polyominoes containing the origin) = log(m A(m))
-  std::vector<double> w(pop); std::vector<int> cnt(pop), freeSlots, gen; std::vector<u32> S;
+  std::vector<double> w(pop); std::vector<int> cnt(pop), freeSlots, gen; std::vector<u32> S; std::vector<double> pw; int nwv[4096];
+  const double kpow[5] = {1, kappa, kappa * kappa, kappa * kappa * kappa, kappa * kappa * kappa * kappa}, lk = std::log(kappa);
   std::vector<int> special = sizes; special.insert(special.end(), cps.begin(), cps.end());
   double lastNorm = 0;                 // log of the mean weight right after the last resampling (0: all weights 1)
   for (int m = 1; m < nmax;) {
@@ -90,21 +92,34 @@ int main(int argc, char **argv) {
         }
         const int G = (int)S.size();
         if (!G) { wk.lw = -INFINITY; break; }
-        const int j = (int)(rng.uni() * G);
+        // choose s_j with probability proportional to kappa^(new_j - j), new_j = untried sites s_j would add
+        pw.resize(G); double tot = 0, kj = 1;
+        for (int i = 0; i < G; i++, kj /= kappa) {
+          int nw = 0; for (int d = 0; d < 4; d++) nw += grid[S[i] + nb[d]] == 0;
+          nwv[i & 4095] = nw; pw[i] = kj * kpow[nw]; tot += pw[i];
+          if (kj < 1e-12 * tot) { for (int r = i + 1; r < G; r++) pw[r] = 0; break; }
+        }
+        double u = rng.uni() * tot; int j = 0;
+        while (j < G - 1 && u >= pw[j]) u -= pw[j++];
+        while (pw[j] == 0 && j > 0) j--;
+        int nwj = 0; for (int d = 0; d < 4; d++) nwj += grid[S[j] + nb[d]] == 0;
         for (int i = 0; i < j; i++) { grid[S[i]] = 2; wk.blocked.push_back(S[i]); }
         grid[S[j]] = 1; wk.cells.push_back(S[j]); mm++; wk.head = gen[j];
         for (int i = j + 1; i < G; i++) grid[S[i]] = 0;
-        wk.lw += std::log((double)G);
+        wk.lw += std::log(tot / kappa); wk.G = G - j - 1 + nwj;
       }
       for (u32 g : wk.cells) grid[g] = 0;
       for (u32 g : wk.blocked) grid[g] = 0;
     }
     m = target;
-    double mx = -INFINITY; for (auto &wk : W) mx = std::max(mx, wk.lw);
-    double sum = 0, sum2 = 0; int alive = 0;
-    for (int i = 0; i < pop; i++) { w[i] = std::exp(W[i].lw - mx); sum += w[i]; sum2 += w[i] * w[i]; alive += W[i].lw > -INFINITY; }
+    // the population follows counting measure tilted by kappa^G; lc removes the tilt
+    double mx = -INFINITY, mxc = -INFINITY; for (auto &wk : W) { mx = std::max(mx, wk.lw); mxc = std::max(mxc, wk.lw - lk * wk.G); }
+    double sum = 0, sum2 = 0, sumc = 0, sumc2 = 0; int alive = 0;
+    for (int i = 0; i < pop; i++) { w[i] = std::exp(W[i].lw - mx); sum += w[i]; sum2 += w[i] * w[i]; alive += W[i].lw > -INFINITY;
+      const double c = std::exp(W[i].lw - lk * W[i].G - mxc); sumc += c; sumc2 += c * c; }
     const double norm = mx + std::log(sum / pop), ess = sum * sum / sum2;     // log mean weight since the last resampling
-    if (fz) { fprintf(fz, "%d %.10f %d %.1f\n", m, logZ + norm, alive, ess); fflush(fz); }
+    const double normc = mxc + std::log(sumc / pop) + lk * 4, essc = sumc * sumc / sumc2;   // same, for the counting measure (kappa^4: the start)
+    if (fz) { fprintf(fz, "%d %.10f %d %.1f %.1f\n", m, logZ + normc, alive, ess, essc); fflush(fz); }
     if (std::find(sizes.begin(), sizes.end(), m) != sizes.end() && fo) {
       const int i10 = cpIndex(std::max(K, m / 10 / K * K)), i2 = cpIndex(std::max(K, m / 2 / K * K));
       std::unordered_set<u32> a10, a2;
@@ -112,13 +127,13 @@ int main(int argc, char **argv) {
         if (!(W[i].lw > -INFINITY)) continue;
         for (int k = 0; k < m; k++) { X[k] = W[i].cells[k] % L; Y[k] = W[i].cells[k] / L; }
         F.compute(X.data(), Y.data(), m, f);
-        double hdr[4] = {(double)m, W[i].lw - mx, (double)W[i].anc[i10], (double)W[i].anc[i2]}; fwrite(hdr, 8, 4, fo); fwrite(f.data(), 8, f.size(), fo);
+        double hdr[4] = {(double)m, W[i].lw - lk * W[i].G - mxc, (double)W[i].anc[i10], (double)W[i].anc[i2]}; fwrite(hdr, 8, 4, fo); fwrite(f.data(), 8, f.size(), fo);
         a10.insert(W[i].anc[i10]); a2.insert(W[i].anc[i2]);
       }
       fflush(fo);
-      fprintf(stderr, "m=%d  alive %d/%d  distinct ancestors at m/10: %zu, at m/2: %zu  log(mA)=%.6f  ESS %.0f  %.0fs\n", m, alive, pop, a10.size(), a2.size(), logZ + norm, ess, now() - t0);
+      fprintf(stderr, "m=%d  alive %d/%d  distinct ancestors at m/10: %zu, at m/2: %zu  log(mA)=%.6f  ESS %.0f  %.0fs\n", m, alive, pop, a10.size(), a2.size(), logZ + normc, essc, now() - t0);
     }
-    if (m == nmax) { logZ += norm; break; }
+    if (m == nmax) { logZ += normc; break; }
     if (ess > essFrac * pop && cpIndex(m) < 0) continue;
     logZ += norm; (void)lastNorm;
     // systematic resampling to equal weights

@@ -27,3 +27,9 @@ exact() { ./leath -n $2 -p $1 -count $3 -tsec $4 -seed $5 -out $D/x$1_$2.feat -s
 # exact averages over all polyominoes of 14 and 16 cells, and the uniform chain at those sizes
 ( for n in 14 16; do ./enumerate $n > $D/exact_$n.txt; $M -n $n -pcp 0.4 -moves 4.001e8 -burn 100000 -every 200 -seed $((300+n)) -out /dev/null -feat $D/e$n.feat 2> $D/e$n.log; done ) &
 wait
+
+# Uniform polyominoes by population growth with the look-ahead tilt (run after the above):
+#   for k in 1 2 3 4 5 6 7 8; do ./grow -nmax 1000 -pop 200000 -kappa 1.8 -sizes 250,500,1000 -seed $k -out conv/gk1000_$k; done
+#   for k in 1 2 3 4 5 6; do ./grow -nmax 2000 -pop 100000 -kappa 1.8 -sizes 2000 -seed $((20+k)) -out conv/gk2000_$k; done
+# and the chains to compare at the sizes that have no A/B ladder (both start from ladder C; the first 5% is dropped):
+#   for s in A B; do for n in 500 2000; do ./manyomino_feat -load prod/ckpt_C_n$n.bin -pcp 0.4 -moves 1e18 -tsec 300 -every $n -seed $RANDOM -out conv/u${n}_$s.ts -feat conv/u${n}_$s.feat; done; done

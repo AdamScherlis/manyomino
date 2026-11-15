@@ -189,4 +189,31 @@
       series: [{ color: S1, pts }],
     });
   })();
+  // ---------------------------------------------------------------- convergence checks
+  if (DATA.conv && $('ch-z')) (function () {
+    const C = DATA.conv, rows = C.tests, lim = 6;
+    // one dot per observable, one row per test; a little vertical jitter so dots do not hide each other
+    const jit = i => ((i * 0.6180339887) % 1 - 0.5) * 0.56;
+    const mk = ctl => rows.flatMap((t, r) => !!t.control === ctl ? t.z.map((z, i) => [Math.max(-lim, Math.min(lim, z[1])), rows.length - r + jit(i), 0, z[0], z[1], t.label]) : []);
+    chart($('ch-z'), {
+      xlabel: 'difference from the reference, in standard errors', ylabel: '', xdomain: [-lim - 0.3, lim + 0.3], ydomain: [0.4, rows.length + 0.6],
+      height: 60 + 44 * rows.length, leftPad: 150, rightPad: 14, noTable: true,
+      yticks: rows.map((t, r) => [rows.length - r, t.label]),
+      vbands: [{ x0: -2, x1: 2, color: S3, label: 'within 2 standard errors' }],
+      aria: 'For each test, the difference between the chain and the reference for every observable, in standard errors',
+      tip: p => `<b>${p[5]}</b><br>${p[3]}: ${p[4] >= 0 ? '+' : ''}${p[4].toFixed(2)}`,
+      series: [{ name: 'the chain', color: S1, r: 3.2, pts: mk(false) }, { name: 'deliberately wrong chain', color: S2, r: 3.2, pts: mk(true) }],
+    });
+    const sl = C.slow;
+    chart($('ch-slow'), {
+      xlog: true, xlabel: 'cells in the polyomino', ylabel: 'moves per cell to forget', xname: 'cells', yname: 'autocorrelation time ÷ n', ysig: 3,
+      ydomain: [0, Math.max(...sl.map(r => r.mode + r.mode_err), ...sl.map(r => r.single)) * 1.15], height: 320,
+      aria: 'Autocorrelation time in moves per cell against size: the radius, the slowest single observable, and the slowest combination found',
+      series: [
+        { name: 'squared radius', color: S1, pts: sl.map(r => [r.n, r.rg2, r.rg2_err]), line: sl.map(r => [r.n, r.rg2]) },
+        { name: 'slowest single observable', color: S2, pts: sl.map(r => [r.n, r.single, r.single_err]), line: sl.map(r => [r.n, r.single]) },
+        { name: 'slowest combination found', color: S3, pts: sl.map(r => [r.n, r.mode, r.mode_err]), line: sl.map(r => [r.n, r.mode]) },
+      ],
+    });
+  })();
 })();

@@ -130,15 +130,17 @@ def compare_exact(tag, exact_fn, chain_fns, label):
     return out
 
 
-def compare_growth(tag, grow_glob, chain_fns, label):
+def compare_growth(tag, grow_glob, chain_fns, label, m, burn=0.0):
     files = sorted(f for f in glob.glob(grow_glob) if not f.endswith((".names", ".logz", ".log")))
     reps = []; anc = []; ess = []
     for f in files:
         names, lead, X = load(f, 4)
+        sel = lead[:, 0] == m; lead = lead[sel]; X = X[sel]
+        if not len(X): continue
         w = np.exp(lead[:, 1] - lead[:, 1].max())
         reps.append((w[:, None] * X).sum(0) / w.sum()); anc.append((len(np.unique(lead[:, 2])), len(np.unique(lead[:, 3])))); ess.append(w.sum() ** 2 / (w ** 2).sum())
     reps = np.array(reps); R = len(reps)
-    chains = [chain(f)[1] for f in chain_fns]
+    chains = [chain(f, burn)[1] for f in chain_fns]
     rows = []
     for j, nm in enumerate(names):
         if reps[:, j].std() == 0:
@@ -149,11 +151,12 @@ def compare_growth(tag, grow_glob, chain_fns, label):
         rows.append({"name": nm, "growth": mg, "growth_se": se_g, "chain": mc, "chain_se": se_c, "t": (mc - mg) / math.hypot(se_c, se_g),
                      "sd": float(np.vstack(chains)[:, j].std())})
     ts = np.array([r["t"] for r in rows])
-    out = {"tag": tag, "label": label, "replicas": R, "ancestors_m10": [a[0] for a in anc], "ancestors_m2": [a[1] for a in anc], "ess": [float(e) for e in ess],
+    out = {"tag": tag, "label": label, "n": m, "replicas": R, "population": int(len(X)), "chain_samples": int(sum(len(c) for c in chains)),
+           "median_precision": float(np.median([r["growth_se"] / r["sd"] for r in rows])), "ancestors_m10": [a[0] for a in anc], "ancestors_m2": [a[1] for a in anc], "ess": [float(e) for e in ess],
            "features": len(rows), "t_rms": float(np.sqrt((ts ** 2).mean())), "t_max": float(np.abs(ts).max()), "rows": rows,
            "rel_precision_rg2": next(r["growth_se"] / r["growth"] for r in rows if r["name"] == "rg2")}
     worst = sorted(rows, key=lambda r: -abs(r["t"]))[:3]
-    print(f"{tag}: {R} populations, distinct ancestors at n/2: {out['ancestors_m2']}; t rms {out['t_rms']:.2f} max {out['t_max']:.2f} (t with {R - 1} dof); "
+    print(f"{tag}: {R} populations, distinct ancestors at n/2: {out['ancestors_m2']}; precision {out['median_precision']:.3f} sd; t rms {out['t_rms']:.2f} max {out['t_max']:.2f} (t with {R - 1} dof); "
           f"largest: " + ", ".join(f"{r['name']} {r['t']:+.2f}" for r in worst))
     return out
 
@@ -254,8 +257,9 @@ def main():
     if os.path.exists(ctl) and os.path.exists(ex("0.5", 250)):
         R["control"] = compare_exact("control: chain at p=0.51 against exact p=0.5, n=250", ex("0.5", 250), [ctl], "control")
     uf = lambda n, c: os.path.join(CONV, f"u{n}_{c}.feat")
-    if glob.glob(os.path.join(CONV, "g250_*.logz")) and os.path.exists(uf(250, "A")):
-        R["growth"].append(compare_growth("uniform n=250", os.path.join(CONV, "g250_?"), [uf(250, "A"), uf(250, "B")], "250 cells, uniform"))
+    for m, g, burn in ((250, "gk1000_?", 0.0), (500, "gk1000_?", 0.05), (1000, "gk1000_?", 0.0), (2000, "gk2000_?", 0.05)):
+        if len(glob.glob(os.path.join(CONV, g + ".logz"))) >= 3 and os.path.exists(uf(m, "A")) and os.path.exists(uf(m, "B")):
+            R["growth"].append(compare_growth(f"uniform n={m}", os.path.join(CONV, g), [uf(m, "A"), uf(m, "B")], f"{m} cells", m, burn))
     for n in (250, 1000, 4000, 16000, 64000):
         if os.path.exists(uf(n, "A")) and os.path.exists(uf(n, "B")):
             s = slow_modes(n, uf(n, "A"), uf(n, "B")); R["slow"].append(s)

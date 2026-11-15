@@ -45,7 +45,7 @@ function chart(el, cfg) {
   let hot = [];
   function render() {
     const W = Math.max(280, holder.clientWidth), narrow = W < 380;
-    const m = { l: 58, r: cfg.rightPad != null ? (narrow ? Math.min(cfg.rightPad, 20) : cfg.rightPad) : 18, t: 14, b: 44 };
+    const m = { l: cfg.leftPad ? (narrow ? Math.min(cfg.leftPad, 104) : cfg.leftPad) : 58, r: cfg.rightPad != null ? (narrow ? Math.min(cfg.rightPad, 20) : cfg.rightPad) : 18, t: 14, b: 44 };
     let xs = [], ys = [];
     cfg.series.forEach(s => { (s.pts || []).forEach(p => { xs.push(p[0]); ys.push(p[1] - (p[2] || 0), p[1] + (p[2] || 0)); }); (s.line || []).forEach(p => { xs.push(p[0]); ys.push(p[1]); }); });
     (cfg.bands || []).forEach(b => ys.push(b.y0, b.y1));
@@ -55,13 +55,18 @@ function chart(el, cfg) {
     if (!cfg.ydomain) { const p = (y1 - y0) * 0.07; y0 -= p; y1 += p; }
     const X = v => m.l + (T.x(v) - x0) / (x1 - x0) * (W - m.l - m.r), Y = v => H - m.b - (T.y(v) - y0) / (y1 - y0) * (H - m.t - m.b);
     let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${cfg.aria || ''}">`;
-    const xt = ticks(x0, x1, cfg.xlog, narrow ? 4 : 7), yt = ticks(y0, y1, cfg.ylog, 6);
+    const xt = ticks(x0, x1, cfg.xlog, narrow ? 4 : 7), yt = cfg.yticks ? cfg.yticks.map(t => t[0]) : ticks(y0, y1, cfg.ylog, 6);
+    const ylab = cfg.yticks ? new Map(cfg.yticks) : null;
     const lab = (t, log, f) => {
       if (f) return f(log ? Math.pow(10, t) : t);
       if (log && Math.abs(t - Math.round(t)) < 1e-9 && (t >= 6 || t <= -4)) return `10<tspan dy="-5" font-size="8.5">${Math.round(t)}</tspan>`;
       return fmtNum(log ? Math.pow(10, t) : t);
     };
-    yt.forEach(t => { const y = H - m.b - (t - y0) / (y1 - y0) * (H - m.t - m.b); s += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}"/><text class="tick" x="${m.l - 8}" y="${y + 4}" text-anchor="end">${lab(t, cfg.ylog, cfg.yfmt)}</text>`; });
+    yt.forEach(t => { const y = H - m.b - (t - y0) / (y1 - y0) * (H - m.t - m.b); s += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}"/><text class="tick" x="${m.l - 8}" y="${y + 4}" text-anchor="end">${ylab ? ylab.get(t) : lab(t, cfg.ylog, cfg.yfmt)}</text>`; });
+    (cfg.vbands || []).forEach(b => {
+      s += `<rect x="${X(b.x0)}" width="${X(b.x1) - X(b.x0)}" y="${m.t}" height="${H - m.t - m.b}" fill="${b.color}" opacity=".13"/>`;
+      if (b.label) s += `<text class="dlabel" x="${(X(b.x0) + X(b.x1)) / 2}" y="${m.t + 12}" text-anchor="middle">${b.label}</text>`;
+    });
     xt.forEach(t => { const x = m.l + (t - x0) / (x1 - x0) * (W - m.l - m.r); s += `<line class="grid" x1="${x}" x2="${x}" y1="${m.t}" y2="${H - m.b}"/><text class="tick" x="${x}" y="${H - m.b + 17}" text-anchor="middle">${lab(t, cfg.xlog, cfg.xfmt)}</text>`; });
     s += `<line class="axis" x1="${m.l}" x2="${W - m.r}" y1="${H - m.b}" y2="${H - m.b}"/>`;
     s += `<text class="alabel" x="${(m.l + W - m.r) / 2}" y="${H - 6}" text-anchor="middle">${cfg.xlabel}</text>`;
