@@ -4,7 +4,7 @@ const small = new OffscreenCanvas(W / 4, H / 4), sctx = small.getContext('2d');
 const RAMP = [[255, 236, 170], [255, 170, 96], [240, 96, 140], [160, 92, 236], [84, 116, 255]], PLATE = [13, 15, 22];
 const NL = 64, LUT = [];
 for (let i = 0; i < NL; i++) { const t = i / (NL - 1) * (RAMP.length - 1), k = Math.min(RAMP.length - 2, t | 0), g = t - k; LUT.push('rgb(' + [0, 1, 2].map(c => Math.round(RAMP[k][c] * (1 - g) + RAMP[k + 1][c] * g)).join(',') + ')'); }
-const { BAR, NF, FPS } = SIM, sim = SIM.makeSim(Sampler), n = sim.n, S = sim.s;
+const { NF, FPS, S16F } = SIM, sim = SIM.makeSim(Sampler), n = sim.n, S = sim.s;
 const col = new Float32Array(n).fill(0.5);
 // Camera path, computed ahead of time from a first pass of the same (deterministic) chain: for
 // each frame the box that holds the shape over the next second or so, then smoothed in time.
@@ -31,22 +31,22 @@ const CAM = (() => {
   return out;
 })();
 const cam = { x: 0, y: 0, h: 58 };
-let ghosts = [], streaks = [], shake = 0, shakeF = -100;
+let ghosts = [], streaks = [], shake = 0, shakeF = -100, impact = 0;
 const vig = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 1.05);
 vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(0,0,0,0.62)');
 
 // captions: [first bar, last bar, text, kind]
 const CAPS = [
-  [0.25, 2.3, 'MANYOMINO', 'title'],
-  [2.6, 3.9, 'move one cell at a time', 'cap'],
-  [4.5, 7.6, 'or cut off a whole branch and paste it somewhere else', 'cap'],
-  [16.3, 19.6, 'every move is exactly as likely as its reverse', 'cap'],
-  [29.6, 33.6, 'so every shape of 2,500 cells is equally likely', 'cap'],
+  [0.3, 3.7, 'MANYOMINO', 'title'],
+  [4.3, 7.5, 'move one cell at a time', 'cap'],
+  [8.6, 13.6, 'or cut off a whole branch and paste it somewhere else', 'cap'],
+  [32.5, 38.4, 'every move is exactly as likely as its reverse', 'cap'],
+  [57.6, 63.4, 'so every shape of 2,500 cells is equally likely', 'cap'],
 ];
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 function frame(f, draw) {
-  const r = sim.step(f), X = S.X, Y = S.Y, name = r.name, b = f / BAR;
+  const r = sim.step(f), X = S.X, Y = S.Y, name = r.name, b = SIM.barOf(f), drop = name === 'drop1' || name === 'drop2';
   if (r.burst) {
     let k = 0;
     for (const e of r.burst) {
@@ -54,7 +54,7 @@ function frame(f, draw) {
       const g = new Int32Array(e.cells.length * 2);
       e.cells.forEach((j, i) => { g[2 * i] = sim.pX[j]; g[2 * i + 1] = sim.pY[j]; });
       ghosts.push({ f, g, m: e.m });
-      if (k < 2 && e.m >= 12) streaks.push({ f, a: e.from, b: e.to, m: e.m });
+      if (k < (drop ? 4 : 2) && e.m >= 12) streaks.push({ f, a: e.from, b: e.to, m: e.m });
       k++;
     }
     if (r.burst.length && r.burst[0].m >= 350) { shake = Math.min(1, r.burst[0].m / 900); shakeF = f; }
@@ -67,7 +67,8 @@ function frame(f, draw) {
   for (let i = 0; i < n; i++) col[i] += (dist[i] / md - col[i]) * ease;
   if (!draw) return null;
 
-  const beat = (name === 'drop1' || name === 'drop2') ? Math.exp(-(f % 20) / 5) : 0;
+  const beat = drop ? Math.exp(-((b * 4) % 1) * 4 * S16F / 4) : 0;       // decays over each quarter note
+  for (const sct of SIM.SECTIONS) if (sct[0].startsWith('drop') && b >= sct[1] && b < sct[1] + 0.5) impact = Math.exp(-(b - sct[1]) * 16 * S16F / 5);
   const sAge = f - shakeF, sh = sAge < 14 ? shake * Math.exp(-sAge / 4) : 0;
   const s = (VH / 2) / cam.h * (1 + 0.014 * beat + 0.02 * sh);
   const ox = W / 2 - cam.x * s + sh * 9 * Math.sin(f * 2.4), oy = VH / 2 + 14 - cam.y * s + sh * 9 * Math.cos(f * 3.1);
@@ -106,6 +107,8 @@ function frame(f, draw) {
   ctx.filter = 'blur(10px)'; ctx.globalAlpha = 0.42 + 0.14 * beat + 0.2 * sh; ctx.drawImage(small, 0, 0, W, H);
   ctx.filter = 'blur(44px)'; ctx.globalAlpha = 0.3 + 0.1 * beat; ctx.drawImage(small, 0, 0, W, H);
   ctx.filter = 'none'; ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  if (impact > 0.02) { ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(200,215,255,${(0.5 * impact).toFixed(3)})`; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over'; }
+  impact = 0;
   ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
   // text
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';

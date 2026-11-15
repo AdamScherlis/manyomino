@@ -132,12 +132,15 @@ Klarner's constant from n ≥ 1,000: lambda = 4.0619 ± 0.0006 (accepted 4.06256
 
 ## Music video
 
-`video/` renders the chain as a 90-second music video. A 50×50 square is dissolved by the two
-moves at 90 BPM: relocation proposals run on every frame, transplant proposals come in bursts
+`video/` renders the chain as a two-minute music video. A 50×50 square is dissolved by the two
+moves at 138 BPM: relocation proposals run on every frame, transplant proposals come in bursts
 on the sixteenth-note grid, so branches jump on the beat. (Any fixed sequence of the two
 kernels leaves the uniform distribution stationary, so it is still the same chain.) The
-soundtrack is synthesised from the event log: each accepted relocation is a tick, and the
-largest branch moved in each burst is a mallet note, lower and longer the bigger the branch.
+soundtrack is synthesised from the event log. Each accepted relocation is a tick. The largest
+branch moved in each burst is a mallet note, lower and longer the bigger the branch, and in
+the drops it also fires the lead synth: one stab per sixteenth in which a branch moved,
+brighter, louder and higher up the chord the bigger the branch. Chords, bass and drums are a
+fixed arrangement: a mellow opening that builds into two trance drops.
 
 ```sh
 node video/dry.js events.json                 # the chain's event log (deterministic)
