@@ -69,13 +69,15 @@ def analyse(n, prefixes):
     q = np.array([float(z @ (P @ z) / (z @ z)) for z in (Z - Z.mean(0)).T]); tsingle = 1 / (1 - q.max())
     # share of the slowest eigenvectors lying inside the library's span
     r2 = [float(((B.T @ V[:, j]) ** 2).sum()) for j in range(1, 1 + mult)]
-    chi = float((visits.std() / visits.mean()) ** 2 * visits.mean())                   # visits should be Poisson-like at best; a sanity number
+    names = [nm for nm, k in zip(NAMES, X.std(0) > 0) if k] if NAMES else [str(j) for j in range(Z.shape[1])]
+    cor = np.array([abs(np.corrcoef(V[:, 1], Z[:, j])[0, 1]) for j in range(Z.shape[1])]); top = np.argsort(-cor)[:3]
+    looks = [(names[j], float(cor[j])) for j in top]
     out = {"n": n, "shapes": N, "moves": float(visits.sum()), "transitions": int(len(tr)), "lambda2": lam2, "t_rel": trel, "t_rel_per_cell": trel / n,
            "multiplicity": mult, "eigs": [float(x) for x in w[:8]], "t_library": tlib, "t_library_per_cell": tlib / n, "library_dim": int(B.shape[1]),
-           "t_single_per_cell": tsingle / n, "r2_slowest": r2, "min_visits": float(visits.min()), "max_visits": float(visits.max())}
+           "t_single_per_cell": tsingle / n, "r2_slowest": r2, "slowest_looks_like": looks, "min_visits": float(visits.min()), "max_visits": float(visits.max())}
     print(f"n={n}: {N} shapes, {visits.sum():.3g} moves, {len(tr)} transitions; relaxation time {trel:.1f} moves = {trel / n:.2f} per cell "
           f"(slowest level {mult}-fold); next levels " + " ".join(f"{1 / (1 - x) / n:.2f}" for x in w[1 + mult:1 + mult + 3]) +
-          f"; best library combination {tlib / n:.2f} per cell ({B.shape[1]} dimensions; captures {min(r2):.3f}..{max(r2):.3f} of the slowest eigenvectors); best single observable {tsingle / n:.2f}")
+          f"; best library combination {tlib / n:.2f} per cell ({B.shape[1]} dimensions; captures {min(r2):.3f}..{max(r2):.3f} of the slowest eigenvectors); best single observable {tsingle / n:.2f}; slowest mode correlates with " + ", ".join(f"{a} {b:.2f}" for a, b in looks))
     return out
 
 
