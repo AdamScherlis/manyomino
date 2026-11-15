@@ -45,6 +45,7 @@
 #include <map>
 #include <string>
 #include <unordered_set>
+#include "features.h"
 #include <vector>
 #include <chrono>
 
@@ -663,7 +664,7 @@ static double now() {
 int main(int argc, char **argv) {
   int n = 100, lgW = 0; u64 seed = 1; double pcp = 0.5, tsec = 0; u64 moves = 1000000, every = 0, burn = 0;
   std::string seedShape = "rect", out = "", mode = "run", load = "", snap = ""; double p = 0; u64 snapEvery = 0; int full = 1;
-  int smax = -1, relK = 1, refCP = 0, inflate = 1, revtest = 0; double ppv = 0, ckptSec = 120; std::string ckpt = "";
+  int smax = -1, relK = 1, refCP = 0, inflate = 1, revtest = 0; double ppv = 0, ckptSec = 120; std::string ckpt = "", feat = "";
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     auto nxt = [&]() { return std::string(argv[++i]); };
@@ -691,6 +692,7 @@ int main(int argc, char **argv) {
     else if (a == "-ref") refCP = atoi(nxt().c_str());
     else if (a == "-ppv") ppv = atof(nxt().c_str());
     else if (a == "-tsec") tsec = atof(nxt().c_str());
+    else if (a == "-feat") feat = nxt();
     else { fprintf(stderr, "unknown arg %s\n", a.c_str()); return 1; }
   }
   std::vector<std::pair<int,int>> cells;
@@ -810,6 +812,12 @@ int main(int argc, char **argv) {
   if (!every) every = std::max<u64>(1, moves / 1000);
   fprintf(fo, "# n=%d seed=%" PRIu64 " pcp=%.3f shape=%s lgW=%d p=%.4f every=%" PRIu64 "\n", n, seed, pcp, seedShape.c_str(), lgW, p, every);
   fprintf(fo, "# move sec rg2 asph perim cycles noncut leaves w h holes deg1 deg2 deg3 deg4\n");
+  // -feat FILE: the full observable library (features.h) at every sample, as rows of float64
+  FILE *ff = nullptr; Features FT; std::vector<double> fv;
+  if (!feat.empty()) {
+    ff = fopen(feat.c_str(), "wb");
+    FILE *fn = fopen((feat + ".names").c_str(), "w"); fprintf(fn, "move"); for (auto &s : Features::names()) fprintf(fn, " %s", s.c_str()); fprintf(fn, "\n"); fclose(fn);
+  }
   double t0 = now(), lastCkpt = t0;
   u64 m = 0; int snapIdx = 0;
   for (; m < moves; m++) {
@@ -819,6 +827,7 @@ int main(int argc, char **argv) {
       if (std::max(o.w, o.h) * 2 > S.W) { fprintf(stderr, "extent %ld exceeds half the torus %d — aborting\n", std::max(o.w, o.h), S.W); return 2; }
       fprintf(fo, "%" PRIu64 " %.2f %.6g %.5f %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld\n", m + 1, now() - t0, o.rg2, o.asph, o.perim, o.cycles, o.noncut, o.leaves, o.w, o.h, o.holes, o.deg[1], o.deg[2], o.deg[3], o.deg[4]);
       fflush(fo);
+      if (ff && (m + 1) >= burn) { FT.compute(S.X.data(), S.Y.data(), n, fv); double mv = (double)(m + 1); fwrite(&mv, 8, 1, ff); fwrite(fv.data(), 8, fv.size(), ff); fflush(ff); }
       if (!ckpt.empty() && now() - lastCkpt > ckptSec) {   // rolling checkpoint, replaced atomically
         std::string tmp = ckpt + ".tmp";
         FILE *f = fopen(tmp.c_str(), "wb"); int32_t hdr = n; fwrite(&hdr, 4, 1, f);
