@@ -106,13 +106,14 @@ Madras (J. Phys. A 25, 1992).
 ## Results
 
 Two independent ladders (seeds A and B) at every other size, a third (C) at the sizes between;
-one core each, about 16 core-hours in total. `analysis/summarize.py` and `analysis/build_page.py`
+one core each, about 16 core-hours in total; the largest size was then run about ten times
+longer on four chains (`scripts/extend_hero.sh`, 30 core-hours). `analysis/summarize.py` and `analysis/build_page.py`
 regenerate everything below from the raw time series, which are not in the repository
 (`scripts/launch_all.sh` reruns them).
 
 | cells | chains | run length / tau | <Rg^2> | <Rg> | tau / n | perimeter / n | removable / n | holes / n | lambda estimate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 125 | 1 | 81,208 | 90.948 ± 0.17 | 9.4562 ± 0.0084 | 14.5 | 1.23006 | 0.30302 | 0.02094 | 4.0602 ± 0.0032 |
+| 125 | 1 | 81,208 | 90.948 ± 0.17 | 9.4562 ± 0.0084 | 14.5 | 1.23006 | 0.30302 | 0.02094 | 4.0603 ± 0.0032 |
 | 250 | 2 | 64,669 | 222.51 ± 0.37 | 14.788 ± 0.012 | 15.6 | 1.21278 | 0.29866 | 0.02199 | 4.0610 ± 0.0029 |
 | 500 | 1 | 13,709 | 543.3 ± 3 | 23.11 ± 0.061 | 15.3 | 1.20384 | 0.29614 | 0.02245 | 4.0652 ± 0.0058 |
 | 1,000 | 2 | 15,379 | 1323.8 ± 4.1 | 36.07 ± 0.056 | 14.5 | 1.19938 | 0.29541 | 0.02284 | 4.0601 ± 0.0027 |
@@ -125,19 +126,20 @@ regenerate everything below from the raw time series, which are not in the repos
 | 128,000 | 1 | 225 | 6.9162e+05 ± 2.2e+04 | 822.09 ± 12 | 12.0 | 1.19520 | 0.29410 | 0.02304 | 4.0639 ± 0.0026 |
 | 256,000 | 2 | 104 | 1.6449e+06 ± 5.3e+04 | 1273.7 ± 19 | 22.5 | 1.19511 | 0.29424 | 0.02305 | 4.0616 ± 0.0017 |
 | 512,000 | 1 | 130 | 3.8113e+06 ± 1.3e+05 | 1935.5 ± 33 | 12.4 | 1.19512 | 0.29400 | 0.02308 | 4.0651 ± 0.0012 |
-| 1,024,000 | 2 | 215 | 9.2941e+06 ± 2.3e+05 | 3029.3 ± 37 | 5.4 | 1.19485 | 0.29437 | 0.02311 | 4.0590 ± 0.0016 |
+| 1,024,000 | 4 | 626 | 9.6899e+06 ± 1.8e+05 | 3087.9 ± 28 | 8.1 | 1.19503 | 0.29423 | 0.02308 | 4.0615 ± 0.0007 |
 
 Each run starts from a 2x-inflated sample of the size below; the first 300 n moves (and at least a fifth of the run) are discarded. tau is the integrated autocorrelation time of Rg^2 in moves, and run length counts all moves. Above about 100,000 cells the runs are only tens of tau long after burn-in, so tau itself is poorly determined there (hence the scatter in tau / n).
 
 Relocate-only autocorrelation time (moves), n = 50: 3.84e+03, 100: 2.41e+04, 200: 1.41e+05, 400: 9.33e+05, 800: 6.09e+06, 1600: 1.54e+07; fit tau ∝ n^2.62 (±0.04).
-With transplants: tau ∝ n^0.99 (±0.03), about 15 moves per cell.
-Size exponent from n ≥ 4,000: nu = 0.6402 ± 0.0014 (literature 0.6412 ± 0.0005).
-Klarner's constant from n ≥ 1,000: lambda = 4.0619 ± 0.0006 (accepted 4.0625696; chi-square of the sizes about their mean 14.0 for 10 degrees of freedom, error scaled accordingly).
+With transplants: tau ∝ n^0.98 (±0.02), about 15 moves per cell.
+Size exponent from n ≥ 4,000: nu = 0.6416 ± 0.0013 (literature 0.6412 ± 0.0005).
+Klarner's constant from n ≥ 1,000: lambda = 4.0619 ± 0.0004 (accepted 4.0625696; chi-square of the sizes about their mean 10.9 for 10 degrees of freedom, error scaled accordingly).
 
 ## Convergence checks
 
-There is no proof that this chain mixes fast, and the radius of gyration could in principle
-relax quickly while something else lags. `scripts/convergence.sh` and `analysis/convergence.py`
+There is no proof that this chain mixes as fast as it appears to (only the weak bound described
+at the end of this section), and the radius of gyration could in principle relax quickly while
+something else lags. `scripts/convergence.sh` and `analysis/convergence.py`
 attack that from three sides, using 60 observables per shape (`src/features.h`: moments of the
 mass distribution to order 6, radial profile, local pattern counts, holes, the cut structure
 of the shape, graph distances).
@@ -223,9 +225,58 @@ symmetry average to zero.
 **A proof, of a weak kind.** [`proof/`](proof/README.md) shows that the relaxation time of this
 chain is at most n^(O(log n)): no property of the shape can take exponentially long to
 forget. The bound is far above what is measured, and the argument has not been reviewed.
-For shapes of up to 10 cells, `-mode trans` and `analysis/spectrum.py` compute the exact
-relaxation time from the full transition matrix: the slowest property of all is the shape's
-orientation, and the 60 observables capture 98.6% of it at 10 cells.
+
+**Properties nobody measured.** Two more checks address slow properties outside the 60
+observables. For shapes of up to 10 cells, `-mode trans` and `analysis/spectrum.py` measure the
+full table of transition rates between shapes and take its relaxation time, which bounds every
+property at once: the slowest is the shape's orientation, and the 60 observables capture 98.6%
+of it at 10 cells. At large sizes, `scripts/fossil.sh` and `analysis/fossil.py` follow the
+largest piece of a starting shape that is still intact (cells keep their identity as they
+move), the slowest kind of property there is; it is gone after a few hundred moves per cell.
+`analysis/hero_slow.py` times each observable directly at 1,024,000 cells. The trunk is no
+slower there than at 64,000 cells, but one observable, the size of the largest clump of
+cells held together by loops (`blob_max`, the largest bridgeless component), reads about three times slower than at 64,000 cells, with an uncertainty of
+more than half: the largest clump grows with the shape, and the rare very large ones persist
+for more than 100 moves per cell.
+
+Relaxation time of the whole chain on small shapes, from the measured table of transition rates (`analysis/spectrum.py`), in moves per cell:
+
+| cells | shapes | slowest property of all | slowest combination of the observables | share of the slowest property inside the library |
+|---|---|---|---|---|
+| 4 | 19 | 3.68 | 3.68 | 100.0% |
+| 5 | 63 | 4.79 | 4.79 | 100.0% |
+| 6 | 216 | 6.96 | 6.92 | 99.8% |
+| 7 | 760 | 7.54 | 7.43 | 99.6% |
+| 8 | 2,725 | 9.68 | 9.40 | 99.2% |
+| 9 | 9,910 | 9.64 | 9.32 | 98.9% |
+| 10 | 36,446 | 11.61 | 11.09 | 98.6% |
+
+Largest piece of a starting shape still intact (`analysis/fossil.py`), median over runs, in cells:
+
+| cells | runs | after 5 n moves | after 50 n moves | after 100 n moves | after 200 n moves | after 400 n moves | after 600 n moves | every cell has moved by |
+|---|---|---|---|---|---|---|---|---|
+| 4,000 | 7 | 2,821 | 235 | 27 | 9 | 3 | 3 | 20 to 190 n moves |
+| 16,000 | 8 | 10,856 | 796 | 134 | 16 | 3 | 3 | 40 to 200 n moves |
+| 64,000 | 4 | 42,434 | 1,990 | 343 | 35 | 4 | 3 | 40 to 190 n moves |
+| 256,000 | 1 | 111,280 | 5,397 | 234 | 187 | 13 | 3 | 65 n moves |
+| 1,024,000 | 16 pairs of snapshots 150 n moves apart | | | | | | | largest intact piece 181 to 3,218 cells |
+| 1,024,000 | 12 pairs of snapshots 300 n moves apart | | | | | | | largest intact piece 28 to 162 cells |
+| 1,024,000 | 8 pairs of snapshots 450 n moves apart | | | | | | | largest intact piece 6 to 12 cells |
+| 1,024,000 | 4 pairs of snapshots 600 n moves apart | | | | | | | largest intact piece 3 to 4 cells |
+
+Autocorrelation times at 1,024,000 cells from the extended runs (`analysis/hero_slow.py`; 4 chains, 3,885 moves per cell in all), in moves per cell, with the same estimator applied to equally short stretches of the smaller chains (mean ± spread over sets of stretches) and the long-run value there:
+
+| observable | 1,024,000 cells | 16,000: short stretches | 16,000: long run | 64,000: short stretches | 64,000: long run |
+|---|---|---|---|---|---|
+| rg2 | 8.3 ± 0.3 | 15.4 ± 5.2 | 14.4 | 13.2 ± 3.0 | 13.6 |
+| blob_max | 96.2 ± 55.8 | 19.4 ± 12.2 | 27.1 | 21.5 ± 6.2 | 30.5 |
+| trunk01 | 32.0 ± 8.7 | 34.7 ± 14.5 | 41.3 | 39.9 ± 18.3 | 34.9 |
+| trunk03 | 30.1 ± 7.8 | 34.6 ± 15.2 | 36.3 | 28.2 ± 8.2 | 28.7 |
+| m15 | 19.9 ± 6.8 | 14.0 ± 3.4 | 13.7 | 13.6 ± 4.0 | 13.0 |
+| trunk10 | 18.4 ± 4.5 | 22.6 ± 8.3 | 21.9 | 21.4 ± 5.0 | 19.8 |
+| m13 | 17.8 ± 5.1 | 15.5 ± 3.7 | 15.3 | 14.2 ± 4.5 | 14.1 |
+| perim | 17.5 ± 1.4 | 21.8 ± 10.0 | 20.8 | 16.5 ± 4.6 | 18.4 |
+| detach | 15.5 ± 3.2 | 17.7 ± 9.3 | 16.5 | 15.8 ± 3.4 | 16.6 |
 
 What this does not cover: beyond 1,000 cells there is no independent sampler (the growth
 sampler's own count estimate fails from about 1,000 cells at these population sizes), and a

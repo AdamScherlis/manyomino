@@ -270,13 +270,35 @@ def guarantee_report(hero_n, exp_shapes):
 
     # ---- the slow property timed at the largest size
     H = load("hero_slow.json")
-    T["HS_SENTENCE"] = ""
+    T["HS_PARA"] = ""; T["HS_CHECK"] = ""
     if H and H["moves_per_cell"] > 3000:
         tr = next((r for r in H["all"] if r["name"] == "trunk01"), None); rg = H["rg2"]; top = H["slowest"][0]
         cal = H["calibration"]
         D["hero_slow"] = {"n": H["n"], "rg2": [rg["tau"], rg["err"]], "trunk": [tr["tau"], tr["err"]], "top": [top["name"], top["tau"], top["err"]]}
         T["HS_TRUNK"] = f"{tr['tau']:.0f}"; T["HS_TRUNK_ERR"] = f"{tr['err']:.0f}"; T["HS_RG"] = f"{rg['tau']:.0f}"; T["HS_RG_ERR"] = f"{rg['err']:.0f}"
         T["HS_MOVES"] = f"{round(H['moves_per_cell'], -2):,.0f}"; T["HS_CHAINS"] = str(len(H["chains"]))
+        bl = next(r for r in H["all"] if r["name"] == "blob_max"); B = H["blob"]; sizes = sorted(cal, key=int)
+        words = {2: "two", 3: "three", 4: "four", 5: "five"}; nch = words.get(len(H["chains"]), str(len(H["chains"])))
+        per = round(H["moves_per_cell"] / H["step"] / len(H["chains"]), -1)
+        D["hero_slow"]["blob"] = [bl["tau"], bl["err"]]; T["HS_BLOB"] = f"{round(bl['tau'], -1):.0f}"; T["HS_BLOB_RAW"] = f"{bl['tau']:.4f}"
+        slower = bl["tau"] > 1.5 * max(c["blob_max"]["long"] or 0 for c in cal.values())
+        T["HS_PARA"] = (
+            f"<p>The longer runs at {H['n']:,} cells allow a direct check at the largest size. The search itself cannot be repeated there "
+            f"({nch} chains of about {per:.0f} samples each are too few to search over combinations), but each measurement can be timed on its own. "
+            f"The slowest single measurement at the smaller sizes, the trunk, takes {tr['tau']:.0f}&nbsp;&plusmn;&nbsp;{tr['err']:.0f} moves per cell there, against "
+            + " and ".join(f"{cal[n]['trunk01']['long']:.0f} at {int(n):,}" for n in sizes if cal[n]["trunk01"].get("long")) + " cells. It has not lengthened. "
+            f"The radius takes about {rg['tau']:.0f}, against {cal[sizes[-1]]['rg2']['long']:.0f}. "
+            + ((f"One measurement does read longer: the size of the largest clump. Within each chain it takes {min(bl['own']):.0f} to {max(bl['own']):.0f} moves per cell, "
+                f"but the {nch} chains disagree about its average by more than that allows, and timing it about their common average gives "
+                f"{bl['tau']:.0f}&nbsp;&plusmn;&nbsp;{bl['err']:.0f}. The record shows why. The largest clump grows with the shape, from about "
+                f"{cal[sizes[-1]]['blob_max']['mean']:.0f} cells on average at {int(sizes[-1]):,} cells to {B['mean']:.0f} at {H['n']:,}, and the rare very large ones last: "
+                f"one chain kept a clump of more than {B['p90']:.0f} cells for {B['longest_above_p90']:.0f} moves per cell. Runs of this length see only a handful of such "
+                f"episodes, so the figure is uncertain by more than half. It is still the first direct sign of a property that slows as the shape grows. "
+                f"By its clock the largest runs would be about @NEFF@ relaxation times long.") if slower else
+               "None of the measurements reads clearly longer there than at the smaller sizes.") + "</p>")
+        T["HS_CHECK"] = (f" At {H['n']:,} cells each measurement was timed only on its own, and one, the size of the largest clump, looks slower there "
+                         f"than anything at the smaller sizes: about {round(bl['tau'], -1):.0f} moves per cell, uncertain by more than half. By that clock the runs there are about @NEFF@ relaxation times long.") if slower else \
+                        f" At {H['n']:,} cells each measurement was timed only on its own, and none reads clearly longer."
         md += ["", f"Autocorrelation times at {H['n']:,} cells from the extended runs (`analysis/hero_slow.py`; {len(H['chains'])} chains, {H['moves_per_cell']:,.0f} moves per cell in all), "
                "in moves per cell, with the same estimator applied to equally short stretches of the smaller chains (mean ± spread over sets of stretches) and the long-run value there:", "",
                f"| observable | {H['n']:,} cells | " + " | ".join(f"{int(n):,}: short stretches | {int(n):,}: long run" for n in cal) + " |", "|---|---|" + "---|---|" * len(cal)]

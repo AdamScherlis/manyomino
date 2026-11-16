@@ -345,6 +345,7 @@
   {{BURN_N}} moves per cell discarded at the start of each run are about {{CV_BURN_SLOW}}
   relaxation times, not 20. And the {{NHERO}}-cell runs are about {{NEFF_HERO_SLOW}} relaxation
   times long after burn-in, not {{NEFF_HERO}}. {{CV_SLOW_TREND}}</p>
+  {{HS_PARA}}
   <h3>Starting somewhere absurd</h3>
   <p>{{CV_OTHER}}</p>
 </section>
@@ -473,9 +474,9 @@
     astronomically larger than the measured times, and the measured times are measurements. The
     search for slow properties covered {{CV_NOBS}} measurements and their combinations at sizes
     up to {{CV_SLOW_NMAX}} cells; only up to {{SP_NMAX}} cells is it known that nothing outside
-    that list is slower. Beyond 1,000 cells no independent sampler is available, so the larger
+    that list is slower.{{HS_CHECK}} Beyond 1,000 cells no independent sampler is available, so the larger
     sizes rest on the walk&rsquo;s own internal checks. The largest size rests on about
-    {{NEFF_HERO_SLOW}} relaxation times of running after burn-in, across {{HERO_CHAINS}} chains.</span></li>
+    {{NEFF_HERO_SLOW}} relaxation times of running after burn-in, across {{HERO_CHAINS}} chains, counted in the slowest time found at the smaller sizes.</span></li>
   </ul>
   <p>Code, validation scripts and the data behind every chart are in
   <a href="https://github.com/AdamScherlis/manyomino">AdamScherlis/manyomino</a>.</p>

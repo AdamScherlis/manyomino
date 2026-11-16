@@ -1,6 +1,6 @@
 | cells | chains | run length / tau | <Rg^2> | <Rg> | tau / n | perimeter / n | removable / n | holes / n | lambda estimate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 125 | 1 | 81,208 | 90.948 ± 0.17 | 9.4562 ± 0.0084 | 14.5 | 1.23006 | 0.30302 | 0.02094 | 4.0602 ± 0.0032 |
+| 125 | 1 | 81,208 | 90.948 ± 0.17 | 9.4562 ± 0.0084 | 14.5 | 1.23006 | 0.30302 | 0.02094 | 4.0603 ± 0.0032 |
 | 250 | 2 | 64,669 | 222.51 ± 0.37 | 14.788 ± 0.012 | 15.6 | 1.21278 | 0.29866 | 0.02199 | 4.0610 ± 0.0029 |
 | 500 | 1 | 13,709 | 543.3 ± 3 | 23.11 ± 0.061 | 15.3 | 1.20384 | 0.29614 | 0.02245 | 4.0652 ± 0.0058 |
 | 1,000 | 2 | 15,379 | 1323.8 ± 4.1 | 36.07 ± 0.056 | 14.5 | 1.19938 | 0.29541 | 0.02284 | 4.0601 ± 0.0027 |
@@ -13,11 +13,11 @@
 | 128,000 | 1 | 225 | 6.9162e+05 ± 2.2e+04 | 822.09 ± 12 | 12.0 | 1.19520 | 0.29410 | 0.02304 | 4.0639 ± 0.0026 |
 | 256,000 | 2 | 104 | 1.6449e+06 ± 5.3e+04 | 1273.7 ± 19 | 22.5 | 1.19511 | 0.29424 | 0.02305 | 4.0616 ± 0.0017 |
 | 512,000 | 1 | 130 | 3.8113e+06 ± 1.3e+05 | 1935.5 ± 33 | 12.4 | 1.19512 | 0.29400 | 0.02308 | 4.0651 ± 0.0012 |
-| 1,024,000 | 2 | 215 | 9.2941e+06 ± 2.3e+05 | 3029.3 ± 37 | 5.4 | 1.19485 | 0.29437 | 0.02311 | 4.0590 ± 0.0016 |
+| 1,024,000 | 4 | 626 | 9.6899e+06 ± 1.8e+05 | 3087.9 ± 28 | 8.1 | 1.19503 | 0.29423 | 0.02308 | 4.0615 ± 0.0007 |
 
 Each run starts from a 2x-inflated sample of the size below; the first 300 n moves (and at least a fifth of the run) are discarded. tau is the integrated autocorrelation time of Rg^2 in moves, and run length counts all moves. Above about 100,000 cells the runs are only tens of tau long after burn-in, so tau itself is poorly determined there (hence the scatter in tau / n).
 
 Relocate-only autocorrelation time (moves), n = 50: 3.84e+03, 100: 2.41e+04, 200: 1.41e+05, 400: 9.33e+05, 800: 6.09e+06, 1600: 1.54e+07; fit tau ∝ n^2.62 (±0.04).
-With transplants: tau ∝ n^0.99 (±0.03), about 15 moves per cell.
-Size exponent from n ≥ 4,000: nu = 0.6402 ± 0.0014 (literature 0.6412 ± 0.0005).
-Klarner's constant from n ≥ 1,000: lambda = 4.0619 ± 0.0006 (accepted 4.0625696; chi-square of the sizes about their mean 14.0 for 10 degrees of freedom, error scaled accordingly).
+With transplants: tau ∝ n^0.98 (±0.02), about 15 moves per cell.
+Size exponent from n ≥ 4,000: nu = 0.6416 ± 0.0013 (literature 0.6412 ± 0.0005).
+Klarner's constant from n ≥ 1,000: lambda = 4.0619 ± 0.0004 (accepted 4.0625696; chi-square of the sizes about their mean 10.9 for 10 degrees of freedom, error scaled accordingly).

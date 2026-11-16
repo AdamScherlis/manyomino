@@ -66,7 +66,7 @@ def calibrate(n, seg, step, k, want):
     out = {}
     for nm in want:
         j = names.index(nm); v = [pooled_tau([s[:, j] for s in st])[0] * step for st in sets]
-        out[nm] = (float(np.mean(v)), float(np.std(v, ddof=1)), len(v))
+        out[nm] = (float(np.mean(v)), float(np.std(v, ddof=1)), len(v), float(np.mean([s[:, j].mean() for s in segs])))
     return out
 
 
@@ -82,7 +82,9 @@ def main():
         # leave one chain out
         jk = [pooled_tau(ser[:k] + ser[k + 1:])[0] for k in range(len(ser))] if len(ser) > 2 else []
         err = math.sqrt((len(jk) - 1) / len(jk) * sum((v - np.mean(jk)) ** 2 for v in jk)) if jk else tau * math.sqrt(2 * (2 * w + 1) / total)
-        res.append({"name": nm, "tau": tau * step, "err": err * step, "window": w * step})
+        res.append({"name": nm, "tau": tau * step, "err": err * step, "window": w * step,
+                    "own": [pooled_tau([x])[0] * step for x in ser],          # each chain about its own mean (reads low)
+                    "means": [float(x.mean()) for x in ser]})
     res.sort(key=lambda r: -r["tau"])
     rg = next(r for r in res if r["name"] == "rg2")
     out = {"n": N, "chains": tags, "samples": {t: len(CH[t]["X"]) for t in tags}, "step": step, "moves_per_cell": total * step,
@@ -96,7 +98,15 @@ def main():
     seg = total * step / len(tags)
     for n in (16000, 64000):
         cal = calibrate(n, seg, step, len(tags), want)
-        out["calibration"][str(n)] = {nm: {"short": cal[nm][0], "sd": cal[nm][1], "sets": cal[nm][2], "long": conv.get(n, {}).get(nm)} for nm in want}
+        out["calibration"][str(n)] = {nm: {"short": cal[nm][0], "sd": cal[nm][1], "sets": cal[nm][2], "mean": cal[nm][3], "long": conv.get(n, {}).get(nm)} for nm in want}
+    # how long the rare largest clumps last: the longest unbroken stretch any chain spends with
+    # its largest clump above the level exceeded a tenth of the time
+    j = names.index("blob_max"); allb = np.concatenate([CH[t]["X"][:, j] for t in tags]); thr = float(np.percentile(allb, 90)); best = 0
+    for t in tags:
+        c = 0
+        for b in CH[t]["X"][:, j] > thr:
+            c = c + 1 if b else 0; best = max(best, c)
+    out["blob"] = {"mean": float(allb.mean()), "median": float(np.median(allb)), "p90": thr, "longest_above_p90": best * step}
     json.dump(out, open(os.path.join(ROOT, "analysis", "hero_slow.json"), "w"), indent=1)
     print(f"n={N}: chains {','.join(tags)}, {total} samples every {step:g} moves per cell = {total * step:.0f} moves per cell in all")
     print(f"  squared radius: {rg['tau']:.1f} ± {rg['err']:.1f} moves per cell")

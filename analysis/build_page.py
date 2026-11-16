@@ -216,6 +216,9 @@ def main():
         D["conv"] = conv; T.update(CT)
     GD, GT, gmd = guarantee_report(hero_n, T["EXP"])
     D.update(GD); T.update(GT)
+    if T.get("HS_BLOB_RAW"):                 # the largest runs counted in the largest clump's time
+        for k in ("HS_PARA", "HS_CHECK"):
+            T[k] = T[k].replace("@NEFF@", f"{round(kept / hero_n / float(T['HS_BLOB_RAW']), -1):.0f}")
     T["HERO_MOVES_EXP"] = f"{math.log10(hero_row['moves']):.0f}"
     T["HERO_CHAINS"] = {2: "two", 3: "three", 4: "four", 5: "five"}.get(hero_row["chains"], str(hero_row["chains"]))
     if gmd:
