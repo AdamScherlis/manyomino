@@ -163,3 +163,8 @@ footer{color:var(--mut);font-size:.85rem;border-top:1px solid var(--rule);margin
 .frac{display:inline-flex;flex-direction:column;align-items:center;line-height:1.25}
 .frac > span:first-child{border-bottom:1px solid currentColor;padding:0 .35rem .1rem}
 .frac > span:last-child{padding:.1rem .35rem 0}
+table.data{width:100%}
+table.data th{white-space:normal;vertical-align:bottom;min-width:3.4rem}
+table.data th,table.data td{padding:.3rem .45rem}
+table.data th:first-child,table.data td:first-child{padding-left:0}
+.theorem{border-left:3px solid var(--acc);padding:.15rem 0 .15rem 1rem;margin:1.3rem 0}

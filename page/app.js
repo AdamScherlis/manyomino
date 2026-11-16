@@ -217,5 +217,18 @@
         { name: 'slowest combination found', color: S3, pts: sl.map(r => [r.n, r.mode, r.mode_err]), line: sl.map(r => [r.n, r.mode]) },
       ],
     });
+    if ($('ch-fossil') && DATA.fossil) (function () {
+      const F = DATA.fossil, ramp = ['color-mix(in srgb, var(--s1) 55%, var(--panel))', 'color-mix(in srgb, var(--s1) 78%, var(--panel))', S1];
+      const cs = F.curves.slice(-3);
+      chart($('ch-fossil'), {
+        ylog: true, xlabel: 'moves made per cell', ylabel: 'cells in largest intact piece', xname: 'moves per cell', yname: 'cells', ysig: 4,
+        xdomain: [0, 615], ydomain: [1.5, Math.max(...cs.map(c => c.pts[0][1])) * 1.6], height: 340, noTable: true,
+        aria: 'Size of the largest piece of the starting shape that is still intact, against moves per cell, for several sizes',
+        bands: [{ y0: F.floor[0] - 0.4, y1: F.floor[1] + 0.4, color: S3, label: 'coincidence', labelAt: F.floor[1] + 0.4, left: true }],
+        tip: (p, se) => `<b>${se.name}</b><br>after ${p[0]} moves per cell<br>largest intact piece: ${p[1].toLocaleString('en-US')} cells`,
+        series: cs.map((c, i) => ({ name: c.n.toLocaleString('en-US') + ' cells', color: ramp[i + 3 - cs.length], line: c.pts }))
+          .concat(F.hero.length ? [{ name: F.hero_n.toLocaleString('en-US') + ' cells', color: S2, pts: F.hero.map(p => [p[0], p[1]]) }] : []),
+      });
+    })();
   })();
 })();

@@ -264,8 +264,9 @@
   <p>Everything above assumes that by the time a shape is recorded, the walk has forgotten where
   it started. The evidence so far is the memory of a single number, the radius. A walk can pass
   that test and still fail: if some other property of the shape relaxed far more slowly, every
-  sample would be slightly atypical in a way the radius never shows. No theorem rules this out
-  for this walk, so the claim has to be attacked from outside. Three attacks follow.</p>
+  sample would be slightly atypical in a way the radius never shows. No theorem strong enough
+  to rule this out is known for this walk (a weak one is proved <a href="#guarantee">below</a>),
+  so the claim has to be attacked from outside. Three attacks follow.</p>
 
   <h3>References that have nothing to forget</h3>
   <p>First, a way to look at a shape from many sides: {{CV_NOBS}} measurements covering its overall
@@ -348,6 +349,100 @@
   <p>{{CV_OTHER}}</p>
 </section>
 
+<section class="measure" id="guarantee">
+  <h2>Can a slower property be ruled out?</h2>
+  <p>That search covered {{CV_NOBS}} measurements and their combinations. A property outside the
+  list could be slower still, and no amount of measuring the listed ones would show it. Three
+  things can be said about the properties nobody thought to measure. One is exact, but only for
+  small shapes. One is a measurement of the most stubborn kind of property there is. One is a
+  proof.</p>
+
+  <h3>Small shapes, where nothing is left out</h3>
+  <p>With few enough cells the walk can be known completely. There are {{SP_SHAPES}} polyominoes
+  of {{SP_NMAX}} cells, and a run of {{SP_MOVES}} billion moves visits each of them at least
+  {{SP_VISITS}} times: often enough to measure how likely every possible step from one shape to
+  another is. The memory of any property whatever, listed or not, is a blend of the decay rates
+  built into that table of steps, so the slowest rate in the table is a ceiling over all of
+  them. The times below are in moves per cell.</p>
+  <div class="scroll"><table class="data">
+    <thead><tr><th>cells</th><th>shapes</th><th>slowest property of all</th><th>slowest the search finds</th><th>share it captures</th></tr></thead>
+    <tbody>
+{{SP_ROWS}}    </tbody>
+  </table></div>
+  <p>At these sizes the slowest property of all is the direction in which the shape is
+  stretched, along the grid&rsquo;s rows or along its columns, and the measurements already
+  contain at least {{SP_SHARE}}% of it (the last column). The best combination of the measurements
+  comes within {{SP_GAP}}% of the true slowest time at every size.{{SP_REPRO}} So where the full answer can be known, the search was
+  not missing anything. That is evidence about the method, not about a million cells, where the
+  slowest thing found is a different one, the trunk.</p>
+
+  <h3>The last piece of the starting shape</h3>
+  <p>Some properties are slow by construction. &ldquo;Is this particular cell where it
+  started?&rdquo; cannot be forgotten until that cell has moved. &ldquo;Is this twig of forty
+  cells still in one piece?&rdquo; cannot be forgotten until something breaks it. No average over
+  the shape sees such things, but they can be tracked directly, because the program keeps each
+  cell&rsquo;s identity as it moves. Compare a shape with the one it started from, and find the
+  largest group of cells that still sit in the same arrangement relative to one another. That
+  is the largest piece of the start that survives intact, wherever it has been carried.</p>
+</section>
+
+<section>
+  <div class="chart"><h3>Largest piece of the starting shape still intact</h3>
+    <p class="sub">Cells in the piece, against moves made per cell. Lines are the median over several runs from an equilibrated start (one run at 256,000 cells). The band is what two unrelated shapes give by coincidence.</p>
+    <div id="ch-fossil"></div></div>
+</section>
+
+<section class="measure">
+  <p>After {{FO_FIRST_T}} moves per cell the largest surviving piece is still {{FO_FIRST}}% of the
+  shape. After 100 it is under {{FO_100}}%. Somewhere between {{FO_GONE_LO}} and {{FO_GONE_HI}}
+  moves per cell, at {{FO_SIZES}} cells, it is down to a dozen cells, and soon after to the
+  {{FO_FLOOR}} that coincidence gives. {{FO_HERO}}</p>
+  <p>This is the clock for forgetting everything at once, as opposed to forgetting any one
+  average, and it runs a few times slower: a few hundred moves per cell against
+  {{CV_TAU_MODE}}. It also has to lengthen slowly with size, since the last untouched cell out
+  of a million holds out longer than the last out of a thousand. Every run throws away at least its
+  first {{BURN_N}} moves per cell, which is about the scale of this clock and not only of the
+  radius&rsquo;s.</p>
+
+  <h3>A proof, of a weak kind</h3>
+  <p>Neither of those is a guarantee at a million cells. What can be proved is modest. As far
+  as a short search of the literature shows, it is also new.</p>
+  <p class="theorem"><b>Theorem.</b> For the walk that moves one cell at a time on polyominoes
+  of n cells, every property of the shape is forgotten within
+  4&thinsp;n<sup>5</sup>&thinsp;(L&nbsp;+&nbsp;1)<sup>2</sup>&thinsp;(2n&nbsp;+&nbsp;2)<sup>6L</sup>
+  moves, where L&nbsp;=&nbsp;2&thinsp;log<sub>2</sub>&thinsp;n&nbsp;+&nbsp;4. The sampler on
+  this page, which mixes that walk with transplants, obeys the same bound times
+  n<sup>2</sup>/0.6.</p>
+  <p>&ldquo;Forgotten&rdquo; has the meaning used throughout this page: the autocorrelation
+  time of the property, the number of moves that buys one independent reading of it. What the
+  theorem excludes is a bottleneck. There are about 4.06<sup>n</sup> polyominoes of n cells, and
+  a walk can have whole regions of shapes that it enters and leaves only through a narrow door;
+  finding the door can then take a time that also grows like a number to the power n, and some
+  property (which side of the door am I on?) is remembered for that long. The theorem&rsquo;s
+  bound grows like n to the power 12&thinsp;log<sub>2</sub>&thinsp;n. That is faster than any
+  fixed power of n, but nowhere near exponential. At {{NHERO}} cells there are about
+  10<sup>{{EXP}}</sup> shapes, and the bound is about 10<sup>{{PF_BOUND_EXP}}</sup> moves.</p>
+  <p>The argument gives every pair of shapes A and B a route from one to the other and shows
+  that no single step is used by too many routes, which is the opposite of a narrow door. The
+  route builds B beside A one cell at a time, each new cell taken from A. Cells leave A in an
+  order that keeps the rest of A connected, and join B in an order that keeps the built part
+  connected. Partway along, the shape is part of A joined to part of B. How many routes pass
+  through that one shape? As many as there are ways to fill in what is missing: the rest of A
+  and the rest of B. The order of the cells is chosen (walk the shape branch by branch, always
+  leaving the largest branch for last) so that each missing part is at most L connected pieces.
+  A 1967 inequality of Klarner, that there are at least as many polyominoes of a&nbsp;+&nbsp;b
+  cells as pairs of polyominoes of a and of b cells, then bounds the number of fillings by the
+  number of polyominoes times a power of n proportional to L. A standard theorem of Sinclair
+  converts that count into the bound.</p>
+  <p>The limits of this should be plain. As a number the bound is useless: the largest run here
+  is about 10<sup>{{HERO_MOVES_EXP}}</sup> moves long. It excludes exponentially slow
+  properties and nothing else; a property that took n<sup>3</sup> moves to forget would be
+  compatible with it and would ruin these samples. The combinatorial steps are checked by
+  machine for every pair of shapes up to 7 cells, where the bound can also be compared with
+  the exact answer, but nobody else has read the proof. It is written out in full
+  <a href="https://github.com/AdamScherlis/manyomino/blob/main/proof/README.md">in the repository</a>.</p>
+</section>
+
 <section class="measure">
   <h2>What is and is not established</h2>
   <ul class="checks">
@@ -370,18 +465,25 @@
     <li><b>Agrees with samplers that have no memory.</b><span>Up to 500 cells for uniform shapes
     and 1,000 cells for percolation-weighted ones, on all {{CV_NOBS}} measurements
     (<a href="#doubt">above</a>).</span></li>
-    <li><b>Not established: a proof of fast mixing.</b><span>The relaxation times are
-    measurements. The search for slow properties covered {{CV_NOBS}} measurements and their
-    combinations at sizes up to {{CV_SLOW_NMAX}} cells; a property outside that list could still
-    be slower. Beyond 1,000 cells no independent sampler is available, so the larger sizes rest
-    on the walk&rsquo;s own internal checks. The largest size rests on about {{NEFF_HERO_SLOW}}
-    relaxation times of running after burn-in, across two chains.</span></li>
+    <li><b>Proved: no exponentially slow property.</b><span>The time to forget any property of the
+    shape is at most n to a power proportional to log&nbsp;n
+    (<a href="#guarantee">above</a>). The proof is machine-checked up to 7 cells and has not been
+    reviewed by anyone else.</span></li>
+    <li><b>Not established: that the walk is as fast as it looks.</b><span>The proved bound is
+    astronomically larger than the measured times, and the measured times are measurements. The
+    search for slow properties covered {{CV_NOBS}} measurements and their combinations at sizes
+    up to {{CV_SLOW_NMAX}} cells; only up to {{SP_NMAX}} cells is it known that nothing outside
+    that list is slower. Beyond 1,000 cells no independent sampler is available, so the larger
+    sizes rest on the walk&rsquo;s own internal checks. The largest size rests on about
+    {{NEFF_HERO_SLOW}} relaxation times of running after burn-in, across {{HERO_CHAINS}} chains.</span></li>
   </ul>
   <p>Code, validation scripts and the data behind every chart are in
   <a href="https://github.com/AdamScherlis/manyomino">AdamScherlis/manyomino</a>.</p>
   <ul class="refs">
     <li>E. J. Janse van Rensburg and N. Madras, &ldquo;A nonlocal Monte Carlo algorithm for lattice trees,&rdquo; <i>J. Phys. A</i> 25 (1992).</li>
     <li>H.-P. Hsu, W. Nadler and P. Grassberger, &ldquo;Simulations of lattice animals and trees,&rdquo; <i>J. Phys. A</i> 38 (2005), for &nu;.</li>
+    <li>D. A. Klarner, &ldquo;Cell growth problems,&rdquo; <i>Canad. J. Math.</i> 19 (1967), for the inequality used in the proof.</li>
+    <li>A. Sinclair, &ldquo;Improved bounds for mixing rates of Markov chains and multicommodity flow,&rdquo; <i>Combin. Probab. Comput.</i> 1 (1992).</li>
     <li>I. Jensen, &ldquo;Counting polyominoes: a parallel implementation for cluster computing,&rdquo; <i>ICCS 2003</i>, for &lambda;.</li>
   </ul>
 </section>

@@ -193,3 +193,94 @@ def conv_report(kept_moves, hero_n, burn_n):
                f"slowest combination x = {sc['mode']['exponent']:+.3f} ± {sc['mode']['err']:.3f}."]
     open(os.path.join(ROOT, "analysis", "convergence.md"), "w").write("\n".join(md) + "\n")
     return conv, T, md
+
+
+def guarantee_report(hero_n, exp_shapes):
+    """Numbers and chart data for the page section on properties nobody measured: the full
+    spectrum on small shapes (analysis/spectrum.py), the largest surviving piece of a starting
+    shape (analysis/fossil.py), the slow property timed at the largest size (analysis/hero_slow.py)
+    and the proved bound (proof/README.md).  Returns (data, tokens, markdown lines)."""
+    T = {}; D = {}; md = []
+    load = lambda f: json.load(open(os.path.join(ROOT, "analysis", f))) if os.path.exists(os.path.join(ROOT, "analysis", f)) else None
+
+    # ---- the theorem's bound at the largest size, in powers of ten
+    L = 2 * math.log2(hero_n) + 4
+    bound = math.log10(4) + 5 * math.log10(hero_n) + 2 * math.log10(L + 1) + 6 * L * math.log10(2 * hero_n + 2)
+    T["PF_BOUND_EXP"] = f"{round(bound + 2 * math.log10(hero_n) - math.log10(0.6), -1):,.0f}"       # for the sampler: times n^2 / 0.6
+
+    # ---- small shapes
+    S = load("spectrum.json")
+    if S:
+        rows = ""
+        md += ["", "Relaxation time of the whole chain on small shapes, from the measured table of transition rates (`analysis/spectrum.py`), in moves per cell:", "",
+               "| cells | shapes | slowest property of all | slowest combination of the observables | share of the slowest property inside the library |", "|---|---|---|---|---|"]
+        for r in S:
+            share = min(r["r2_slowest"])
+            rows += (f"<tr><td>{r['n']}</td><td>{r['shapes']:,}</td><td>{r['t_rel_per_cell']:.2f}</td><td>{r['t_library_per_cell']:.2f}</td>"
+                     f"<td>{'100' if share > 0.99995 else f'{100 * share:.1f}'}%</td></tr>\n")
+            md.append(f"| {r['n']} | {r['shapes']:,} | {r['t_rel_per_cell']:.2f} | {r['t_library_per_cell']:.2f} | {100 * share:.1f}% |")
+        T["SP_ROWS"] = rows
+        last = S[-1]
+        T["SP_NMAX"] = str(last["n"]); T["SP_SHAPES"] = f"{last['shapes']:,}"; T["SP_MOVES"] = f"{last['moves'] / 1e9:.0f}"
+        T["SP_VISITS"] = f"{round(last['min_visits'], -3):,.0f}"
+        T["SP_GAP"] = f"{100 * max(1 - r['t_library_per_cell'] / r['t_rel_per_cell'] for r in S):.0f}"
+        T["SP_SHARE"] = f"{100 * min(min(r['r2_slowest']) for r in S):.1f}"
+        rep = next((r for r in S if r.get("t_rel_per_cell_runs")), None)
+        T["SP_REPRO"] = (f" Two separate runs at {rep['n']} cells give the slowest time to within "
+                         f"{100 * abs(rep['t_rel_per_cell_runs'][0] - rep['t_rel_per_cell_runs'][1]) / rep['t_rel_per_cell']:.2f}% of each other.") if rep else ""
+
+    # ---- the largest surviving piece of the start
+    F = load("fossil.json")
+    if F and isinstance(F, dict):
+        med = lambda v: sorted(v)[len(v) // 2]
+        curves = []
+        for n in sorted({r["n"] for r in F["runs"]}):
+            runs = [r for r in F["runs"] if r["n"] == n]
+            ts = [row[0] for row in runs[0]["rows"]]
+            curves.append({"n": n, "runs": len(runs), "pts": [[t, med([r["rows"][k][1] for r in runs])] for k, t in enumerate(ts)],
+                           "gone": sorted(r["t_gone"] for r in runs), "moved": sorted(r["t_all_moved"] for r in runs)})
+        late = [row[1] for r in F["runs"] if r["n"] >= 16000 for row in r["rows"] if row[0] >= 500]
+        hero = F.get("hero", {}).get("rows", [])
+        hp = [[t, med([r[1] for r in hero if r[0] == t]), min(r[1] for r in hero if r[0] == t), max(r[1] for r in hero if r[0] == t), sum(r[0] == t for r in hero)]
+              for t in sorted({r[0] for r in hero})]
+        D["fossil"] = {"curves": [c for c in curves if c["n"] >= 16000], "hero": hp, "hero_n": F.get("hero", {}).get("n"), "floor": [min(late), max(late)]}
+        big = [c for c in curves if c["n"] >= 16000]
+        first = lambda c: 100 * c["pts"][0][1] / c["n"]
+        T["FO_FIRST_T"] = f"{big[0]['pts'][0][0]:.0f}"; T["FO_FIRST"] = f"{min(first(c) for c in big):.0f} to {max(first(c) for c in big):.0f}"
+        at = lambda c, t: next(p[1] for p in c["pts"] if p[0] >= t)
+        T["FO_100"] = f"{100 * max(at(c, 100) / c['n'] for c in big):.1f}"
+        gone = [g for c in big for g in c["gone"]]; moved = [g for c in curves for g in c["moved"]]
+        T["FO_GONE_LO"], T["FO_GONE_HI"] = f"{min(gone):.0f}", f"{max(gone):.0f}"
+        T["FO_MOVED_LO"], T["FO_MOVED_HI"] = f"{min(moved):.0f}", f"{max(moved):.0f}"
+        T["FO_SIZES"] = ", ".join(f"{c['n']:,}" for c in big[:-1]) + f" and {big[-1]['n']:,}"
+        T["FO_FLOOR"] = f"{min(late)} to {max(late)}"
+        if hp:
+            T["FO_HERO"] = ("At " + f"{hero_n:,} cells, measured between snapshots of the long runs: " +
+                            "; ".join(f"after {p[0]:.0f} moves per cell, " + (f"{p[2]:,} to {p[3]:,} cells" if p[4] > 1 and p[2] != p[3] else f"{p[1]:,} cells") +
+                                      (f" (at most {100 * p[3] / hero_n:.2g}% of the shape)" if k == 0 else "") for k, p in enumerate(hp[:4])) + ".")
+        else:
+            T["FO_HERO"] = ""
+        md += ["", "Largest piece of a starting shape still intact (`analysis/fossil.py`), median over runs, in cells:", "",
+               "| cells | runs | " + " | ".join(f"after {t} n moves" for t in (5, 50, 100, 200, 400, 600)) + " | every cell has moved by |", "|---|---|" + "---|" * 7]
+        for c in curves:
+            md.append(f"| {c['n']:,} | {c['runs']} | " + " | ".join(f"{at(c, t):,}" for t in (5, 50, 100, 200, 400, 600)) + f" | {c['moved'][0]:.0f} to {c['moved'][-1]:.0f} n moves |" if c["runs"] > 1 else
+                      f"| {c['n']:,} | 1 | " + " | ".join(f"{at(c, t):,}" for t in (5, 50, 100, 200, 400, 600)) + f" | {c['moved'][0]:.0f} n moves |")
+        for p in hp:
+            md.append(f"| {hero_n:,} | {p[4]} pair{'s' if p[4] > 1 else ''} of snapshots {p[0]:.0f} n moves apart | | | | | | | largest intact piece {p[2]:,} to {p[3]:,} cells |")
+
+    # ---- the slow property timed at the largest size
+    H = load("hero_slow.json")
+    T["HS_SENTENCE"] = ""
+    if H and H["moves_per_cell"] > 3000:
+        tr = next((r for r in H["all"] if r["name"] == "trunk01"), None); rg = H["rg2"]; top = H["slowest"][0]
+        cal = H["calibration"]
+        D["hero_slow"] = {"n": H["n"], "rg2": [rg["tau"], rg["err"]], "trunk": [tr["tau"], tr["err"]], "top": [top["name"], top["tau"], top["err"]]}
+        T["HS_TRUNK"] = f"{tr['tau']:.0f}"; T["HS_TRUNK_ERR"] = f"{tr['err']:.0f}"; T["HS_RG"] = f"{rg['tau']:.0f}"; T["HS_RG_ERR"] = f"{rg['err']:.0f}"
+        T["HS_MOVES"] = f"{round(H['moves_per_cell'], -2):,.0f}"; T["HS_CHAINS"] = str(len(H["chains"]))
+        md += ["", f"Autocorrelation times at {H['n']:,} cells from the extended runs (`analysis/hero_slow.py`; {len(H['chains'])} chains, {H['moves_per_cell']:,.0f} moves per cell in all), "
+               "in moves per cell, with the same estimator applied to equally short stretches of the smaller chains (mean ± spread over sets of stretches) and the long-run value there:", "",
+               f"| observable | {H['n']:,} cells | " + " | ".join(f"{int(n):,}: short stretches | {int(n):,}: long run" for n in cal) + " |", "|---|---|" + "---|---|" * len(cal)]
+        for r in [rg] + [x for x in H["slowest"] if x["name"] != "rg2"]:
+            md.append(f"| {r['name']} | {r['tau']:.1f} ± {r['err']:.1f} | " + " | ".join(
+                f"{c[r['name']]['short']:.1f} ± {c[r['name']]['sd']:.1f} | " + (f"{c[r['name']]['long']:.1f}" if c[r['name']].get('long') else "") for c in cal.values()) + " |")
+    return D, T, md

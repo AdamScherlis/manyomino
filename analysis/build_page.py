@@ -64,7 +64,7 @@ def prep(fn):
     return x, y, nbr, c, d, diam
 
 
-from conv_report import conv_report
+from conv_report import conv_report, guarantee_report
 
 
 def main():
@@ -214,6 +214,12 @@ def main():
     conv, CT, _ = conv_report(kept, hero_n, D.get("burn_n", 300))
     if conv:
         D["conv"] = conv; T.update(CT)
+    GD, GT, gmd = guarantee_report(hero_n, T["EXP"])
+    D.update(GD); T.update(GT)
+    T["HERO_MOVES_EXP"] = f"{math.log10(hero_row['moves']):.0f}"
+    T["HERO_CHAINS"] = {2: "two", 3: "three", 4: "four", 5: "five"}.get(hero_row["chains"], str(hero_row["chains"]))
+    if gmd:
+        open(os.path.join(ROOT, "analysis", "guarantee.md"), "w").write("\n".join(gmd).strip() + "\n")
 
     body = open(os.path.join(PAGE, "body.html")).read()
     slim = {k: v for k, v in D.items() if k not in ("gallery_ratio",)}
