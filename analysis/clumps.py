@@ -89,12 +89,17 @@ def episodes(chains, k):
     return np.array(out)
 
 
-def synthetic(chains, K):
+def synthetic(chains, K, shifts=None):
     """the largest clump of K independent shapes: K stretches of the record, far apart in time,
-    laid side by side.  Returns several such series (independent of one another)."""
+    laid side by side.  shifts slides each stretch round on itself by a different amount, which
+    changes which moments of the K shapes coincide without changing any one of them."""
     x = np.concatenate([c["max"] for c in chains]); P = len(x) // K
-    s = x[: P * K].reshape(K, P).max(axis=0).astype(float)
-    return s
+    rows = x[: P * K].reshape(K, P)
+    if shifts is not None: rows = np.stack([np.roll(r, int(d)) for r, d in zip(rows, shifts)])
+    return rows.max(axis=0).astype(float)
+
+
+NARR = 24          # alignments tried for each put-together shape
 
 
 def powerfit(rows, lo, hi):
@@ -136,12 +141,20 @@ def main(sub="clump"):
     # larger shapes put together from independent stretches of smaller ones
     for n in sorted(D):
         K = 4
+        rng = np.random.default_rng(1)
         while True:
-            s = synthetic(D[n], K)
-            if len(s) < 2000: break
-            t, te = tau_err([s]); m, e = mean_err([s])
-            out["synthetic"].append({"from": n, "K": K, "n": n * K, "len": len(s), "mean": m, "err": e, "tau": t, "tau_err": te})
-            print(f"synthetic {n * K:>10,} cells from {K:>5} x {n:,}: largest clump {m:.1f} ± {e:.1f}, time {t:.1f} ± {te:.1f}  ({len(s):,} moves per cell)")
+            P = sum(len(c) for c in D[n]) // K
+            if P < 2000: break
+            res = []
+            for a in range(NARR):
+                s = synthetic(D[n], K, None if a == 0 else rng.integers(0, P, K))
+                t, te = tau_err([s]); res.append((t, te, s.mean()))
+            res = np.array(res); t = float(np.median(res[:, 0])); te = float(max(res[:, 0].std(ddof=1), np.median(res[:, 1])))
+            m = float(res[:, 2].mean()); e = mean_err([synthetic(D[n], K)])[1]
+            out["synthetic"].append({"from": n, "K": K, "n": n * K, "len": P, "mean": m, "err": e, "tau": t, "tau_err": te,
+                                     "tau_lo": float(res[:, 0].min()), "tau_hi": float(res[:, 0].max())})
+            print(f"synthetic {n * K:>10,} cells from {K:>5} x {n:,}: largest clump {m:.1f} ± {e:.1f}, time {t:.1f} ± {te:.1f} "
+                  f"({res[:, 0].min():.0f} to {res[:, 0].max():.0f} over {NARR} alignments; {P:,} moves per cell)")
             K *= 4
     name = "clumps.json" if sub == "clump" else sub.replace("clump", "clumps") + ".json"
     json.dump(out, open(os.path.join(ROOT, "analysis", name), "w"), indent=1)
