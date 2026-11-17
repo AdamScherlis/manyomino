@@ -217,6 +217,30 @@
         { name: 'slowest combination found', color: S3, pts: sl.map(r => [r.n, r.mode, r.mode_err]), line: sl.map(r => [r.n, r.mode]) },
       ],
     });
+    if ($('fig-ring') && DATA.clump) (function () {
+      const R = DATA.clump.ring, c = 10, d = (cells, cls) => `<path class="${cls}" d="${cells.map(p => `M${p[0] * c + 1} ${(R.h - 1 - p[1]) * c + 1}h${c - 2}v${c - 2}h${2 - c}z`).join('')}"/>`;
+      $('fig-ring').innerHTML = `<svg viewBox="0 0 ${R.w * c} ${R.h * c}" role="img" aria-label="A clump of ${R.cells} cells: a thin closed ring about ${R.w - 12} cells across, drawn in colour, with nearby cells of the shape in grey">${d(R.near, 'near')}${d(R.ring, 'ring')}</svg>`;
+    })();
+    if ($('ch-clump-tau') && DATA.clump) (function () {
+      const K = DATA.clump, ramp = ['color-mix(in srgb, var(--s1) 50%, var(--panel))', 'color-mix(in srgb, var(--s1) 75%, var(--panel))', S1];
+      const nm = r => r.n.toLocaleString('en-US') + '-cell shapes';
+      chart($('ch-clump-dens'), {
+        xlog: true, ylog: true, xlabel: 'cells in the clump, at least', ylabel: 'clumps per cell', xname: 'clump size at least', yname: 'per cell', ysig: 3, height: 320,
+        aria: 'Number of clumps of at least a given size per cell, against clump size, at three shape sizes; the three curves coincide',
+        series: K.base.map((r, i) => ({ name: nm(r), color: ramp[i], r: 3, pts: r.dens, line: r.dens.map(p => [p[0], p[1]]) })),
+      });
+      chart($('ch-clump-tau'), {
+        xlog: true, ylog: true, xlabel: 'cells in the clump, at least', ylabel: 'moves per cell to forget', xname: 'clump size at least', yname: 'moves per cell', ysig: 3, height: 320,
+        aria: 'Autocorrelation time of the number of clumps of at least a given size, against clump size, at three shape sizes; it rises with clump size',
+        series: K.base.map((r, i) => ({ name: nm(r), color: ramp[i], r: 3, pts: r.tau })),
+      });
+      if ($('ch-clump-fix') && K.fix) chart($('ch-clump-fix'), {
+        xlog: true, ylog: true, xlabel: 'cells in the clump, at least', ylabel: 'moves per cell to forget', xname: 'clump size at least', yname: 'moves per cell', ysig: 3, height: 320,
+        aria: 'Autocorrelation time of the number of clumps of at least a given size, for the walk as used and with larger boxes drawn more often',
+        series: [{ name: 'the walk as used', color: S1, r: 3, pts: K.pooled, line: K.pooled.map(p => [p[0], p[1]]) },
+                 { name: 'large boxes drawn more often', color: S2, r: 3, pts: K.fix, line: K.fix.map(p => [p[0], p[1]]) }],
+      });
+    })();
     if ($('ch-fossil') && DATA.fossil) (function () {
       const F = DATA.fossil, ramp = ['color-mix(in srgb, var(--s1) 55%, var(--panel))', 'color-mix(in srgb, var(--s1) 78%, var(--panel))', S1];
       const cs = F.curves.slice(-3);

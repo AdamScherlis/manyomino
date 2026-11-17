@@ -168,3 +168,8 @@ table.data th{white-space:normal;vertical-align:bottom;min-width:3.4rem}
 table.data th,table.data td{padding:.3rem .45rem}
 table.data th:first-child,table.data td:first-child{padding-left:0}
 .theorem{border-left:3px solid var(--acc);padding:.15rem 0 .15rem 1rem;margin:1.3rem 0}
+.ringfig .plate{max-width:34rem;padding:1rem;margin:0 auto}
+.ringfig figcaption{margin-left:auto;margin-right:auto;max-width:34rem}
+#fig-ring svg{display:block;width:100%;height:auto}
+#fig-ring .near{fill:var(--plate-mut);opacity:.38}
+#fig-ring .ring{fill:var(--s2)}

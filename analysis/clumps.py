@@ -17,19 +17,24 @@ holds, on equilibrium chains of 4,000, 16,000 and 64,000 cells.  From those:
                for larger shapes put together from independent stretches of the smaller ones
                (the largest clump of K independent shapes is the largest of their largest)
 
+The relocate move may lift a cell off a loop only if its random connectivity radius K reaches
+round the loop, and P(K >= r) = r^-A with A = 2 by default.  scripts/clumps.sh T 1 repeats the
+runs with A = 1 (-relA 1), which draws large radii far more often.
+
   python3 analysis/clumps.py          # reads clump/ts_*_n*.part*.blobs, writes analysis/clumps.json
+  python3 analysis/clumps.py clump_a1 # the A = 1 runs, writes analysis/clumps_a1.json
 """
-import glob, json, math, os, re
+import glob, json, math, os, re, sys
 import numpy as np
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 NBLOCK = 8
 
 
-def load():
+def load(sub="clump"):
     """{n: [one record array per chain]}; a record is (largest clump, counts at each threshold)"""
     out = {}; th = None
-    files = sorted(glob.glob(os.path.join(ROOT, "clump", "ts_*_n*.part*.blobs")), key=lambda f: (int(re.search(r"_n(\d+)", f).group(1)), os.path.basename(f)[3], int(re.search(r"part(\d+)", f).group(1))))
+    files = sorted(glob.glob(os.path.join(ROOT, sub, "ts_*_n*.part*.blobs")), key=lambda f: (int(re.search(r"_n(\d+)", f).group(1)), os.path.basename(f)[3], int(re.search(r"part(\d+)", f).group(1))))
     for fn in files:
         th = np.array(open(fn + ".sizes").read().split(), int)
         rec = np.dtype([("max", "<u4"), ("c", "<u2", (len(th),))])
@@ -92,24 +97,42 @@ def synthetic(chains, K):
     return s
 
 
-def main():
-    th, D = load()
-    out = {"thresholds": th.tolist(), "sizes": {}, "synthetic": []}
+def powerfit(rows, lo, hi):
+    """weighted fit of log y = a + b log s over lo <= s <= hi; rows are [s, y, err, ...].
+    Returns (b, error of b, y at s = 64 from the fit)"""
+    r = np.array([q[:3] for q in rows if lo <= q[0] <= hi and q[1] > 0 and q[2] > 0 and q[2] == q[2]], float)
+    if len(r) < 3: return None
+    x = np.log(r[:, 0] / 64.0); y = np.log(r[:, 1]); w = (r[:, 1] / r[:, 2]) ** 2
+    A = np.array([[w.sum(), (w * x).sum()], [(w * x).sum(), (w * x * x).sum()]]); cov = np.linalg.inv(A)
+    a, b = cov @ np.array([(w * y).sum(), (w * x * y).sum()])
+    chi2 = float((w * (y - a - b * x) ** 2).sum()); dof = len(r) - 2
+    return {"exponent": float(b), "err": float(math.sqrt(cov[1, 1] * max(1.0, chi2 / dof))), "at64": float(math.exp(a)), "chi2": chi2, "dof": dof, "lo": lo, "hi": hi}
+
+
+def main(sub="clump"):
+    th, D = load(sub)
+    out = {"dir": sub, "thresholds": th.tolist(), "sizes": {}, "synthetic": []}
     for n in sorted(D):
         ch = D[n]; total = sum(len(c) for c in ch)
-        row = {"n": n, "chains": len(ch), "samples": total, "density": [], "tau": [], "episodes": []}
+        row = {"n": n, "chains": len(ch), "samples": total, "density": [], "tau": [], "episodes": [], "present": []}
         for k, s in enumerate(th):
             cnt = [c["c"][:, k] for c in ch]; m, e = mean_err(cnt)
-            if m * total < 30: break                                       # too few sightings to say anything
-            t, te = tau_err(cnt); ep = episodes(ch, k)
+            ep = episodes(ch, k)
+            if m * total < 30 or (m < 0.5 and len(ep) < 20): break         # too few sightings to say anything
+            t, te = tau_err(cnt)
+            row["present"].append([int(s), float(sum((c > 0).sum() for c in cnt) / total)])
             row["density"].append([int(s), m / n, e / n]); row["tau"].append([int(s), t, te, m * total])
             row["episodes"].append([int(s), len(ep), float(ep.mean()) if len(ep) else 0.0, float((ep.astype(float) ** 2).mean() / (2 * ep.mean())) if len(ep) else 0.0])
         mx = [c["max"].astype(float) for c in ch]; m, e = mean_err(mx); t, te = tau_err(mx)
         row["max"] = {"mean": m, "err": e, "tau": t, "tau_err": te, "median": float(np.median(np.concatenate(mx)))}
+        row["tau_fit"] = powerfit(row["tau"], 16, 1e9); row["density_fit"] = powerfit(row["density"], 16, 1e9)
         out["sizes"][str(n)] = row
         print(f"n={n:,}: {len(ch)} chain(s), {total:,} samples; largest clump {m:.1f} ± {e:.1f} cells, time {t:.1f} ± {te:.1f} moves per cell")
         for (s, d, de), (_, t, te, sight), (_, ne, el, er) in zip(row["density"], row["tau"], row["episodes"]):
             print(f"   at least {s:>4} cells: {d:.3e} ± {de:.1e} per cell   lasts {t:6.1f} ± {te:5.1f}   ({sight:,.0f} sightings, {ne:,} episodes of mean length {el:.1f})")
+        for nm, key in (("lasting time", "tau_fit"), ("density", "density_fit")):
+            f = row[key]
+            if f: print(f"   {nm} goes as size^{f['exponent']:.2f} ± {f['err']:.2f} from 16 cells up ({f['at64']:.3g} at 64 cells; chi2 {f['chi2']:.0f} for {f['dof']})")
     # larger shapes put together from independent stretches of smaller ones
     for n in sorted(D):
         K = 4
@@ -120,9 +143,10 @@ def main():
             out["synthetic"].append({"from": n, "K": K, "n": n * K, "len": len(s), "mean": m, "err": e, "tau": t, "tau_err": te})
             print(f"synthetic {n * K:>10,} cells from {K:>5} x {n:,}: largest clump {m:.1f} ± {e:.1f}, time {t:.1f} ± {te:.1f}  ({len(s):,} moves per cell)")
             K *= 4
-    json.dump(out, open(os.path.join(ROOT, "analysis", "clumps.json"), "w"), indent=1)
+    name = "clumps.json" if sub == "clump" else sub.replace("clump", "clumps") + ".json"
+    json.dump(out, open(os.path.join(ROOT, "analysis", name), "w"), indent=1)
     return out
 
 
 if __name__ == "__main__":
-    main()
+    main(*sys.argv[1:2])

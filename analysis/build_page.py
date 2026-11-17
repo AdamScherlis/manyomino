@@ -65,6 +65,7 @@ def prep(fn):
 
 
 from conv_report import conv_report, guarantee_report
+from clump_report import clump_report
 
 
 def main():
@@ -219,6 +220,8 @@ def main():
     if T.get("HS_BLOB_RAW"):                 # the largest runs counted in the largest clump's time
         for k in ("HS_PARA", "HS_CHECK"):
             T[k] = T[k].replace("@NEFF@", f"{round(kept / hero_n / float(T['HS_BLOB_RAW']), -1):.0f}")
+    CD, CLT = clump_report(D.get("hero_slow"))                # clump lifetimes (analysis/clumps.py)
+    D.update(CD); T.update(CLT)
     T["HERO_MOVES_EXP"] = f"{math.log10(hero_row['moves']):.0f}"
     T["HERO_CHAINS"] = {2: "two", 3: "three", 4: "four", 5: "five"}.get(hero_row["chains"], str(hero_row["chains"]))
     if gmd:

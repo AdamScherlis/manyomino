@@ -280,7 +280,7 @@ def guarantee_report(hero_n, exp_shapes):
         bl = next(r for r in H["all"] if r["name"] == "blob_max"); B = H["blob"]; sizes = sorted(cal, key=int)
         words = {2: "two", 3: "three", 4: "four", 5: "five"}; nch = words.get(len(H["chains"]), str(len(H["chains"])))
         per = round(H["moves_per_cell"] / H["step"] / len(H["chains"]), -1)
-        D["hero_slow"]["blob"] = [bl["tau"], bl["err"]]; T["HS_BLOB"] = f"{round(bl['tau'], -1):.0f}"; T["HS_BLOB_RAW"] = f"{bl['tau']:.4f}"
+        D["hero_slow"]["blob"] = [bl["tau"], bl["err"]]; D["hero_slow"]["blob_mean"] = B["mean"]; T["HS_BLOB"] = f"{round(bl['tau'], -1):.0f}"; T["HS_BLOB_RAW"] = f"{bl['tau']:.4f}"
         slower = bl["tau"] > 1.5 * max(c["blob_max"]["long"] or 0 for c in cal.values())
         T["HS_PARA"] = (
             f"<p>The longer runs at {H['n']:,} cells allow a direct check at the largest size. The search itself cannot be repeated there "

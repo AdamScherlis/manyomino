@@ -346,6 +346,70 @@
   relaxation times, not 20. And the {{NHERO}}-cell runs are about {{NEFF_HERO_SLOW}} relaxation
   times long after burn-in, not {{NEFF_HERO}}. {{CV_SLOW_TREND}}</p>
   {{HS_PARA}}
+  <h3 id="loops">Loops that outlast everything else</h3>
+  <p>Why would a clump be remembered longer in a larger shape? Drawing the big ones answers most
+  of it. They are not lumps. Each is a single thin loop, a ring of cells mostly one cell wide,
+  with the rest of the shape hanging off it as usual.</p>
+</section>
+
+<section>
+  <figure class="ringfig">
+    <div class="plate"><div id="fig-ring"></div></div>
+    <figcaption><b>A clump of {{CL_RING_CELLS}} cells</b> in one of the 1,024,000-cell samples, with the
+    cells around it in grey. Cut any one contact between coloured cells and they are all still
+    connected. The other large clumps look the same.</figcaption>
+  </figure>
+</section>
+
+<section class="measure">
+  <p>A ring is the one thing this walk is bad at undoing. A transplant cannot open it: cutting one
+  cell out of a ring detaches nothing, so there is no branch to move. The one-cell move can, but
+  it has a shortcut built in. To avoid searching the whole shape, it checks that the neighbours
+  of the cell it lifts are still joined to each other inside a box around that cell, and gives
+  up if they are not. The box is a random size: it reaches r cells or more from the cell with probability
+  1/r&sup2;. For a cell on a ring the neighbours are joined only the long way round, so the move
+  succeeds only when the box happens to take in the whole ring. Closing a ring is rare for the
+  same reason, so there are exactly as many rings as there should be. They are just slow to come
+  and go, and the larger the ring, the slower.</p>
+  <p>To measure how slow, {{CL_NCHAINS}} fresh runs at 4,000, 16,000 and 64,000 cells recorded,
+  after every move per cell, how many clumps of at least each size the shape held:
+  {{CL_READINGS}} readings in all. Two things come out of them.</p>
+</section>
+
+<section>
+  <div class="two">
+    <div class="chart"><h3>How common clumps of each size are</h3>
+      <p class="sub">Clumps of at least a given size per cell of the shape, at three shape sizes.</p>
+      <div id="ch-clump-dens"></div></div>
+    <div class="chart"><h3>How long they last</h3>
+      <p class="sub">Autocorrelation time, in moves per cell, of the number of clumps of at least a given size.</p>
+      <div id="ch-clump-tau"></div></div>
+  </div>
+</section>
+
+<section class="measure">
+  <p>First, clumps are a local matter. Per cell, a 64,000-cell shape has the same number of
+  clumps of each size as a 4,000-cell one, and that number falls by a factor of about
+  {{CL_DENS_FACTOR}} each time the size doubles. A larger shape simply has more places for a
+  rare large clump to turn up, which is why its largest one is larger: {{CL_MAX_LIST}}.</p>
+  <p>Second, large clumps last longer. The count of clumps of at least 16 cells is forgotten in
+  {{CL_T16}} moves per cell, of at least 64 cells in {{CL_T64}}, of at least 128 in {{CL_T128}},
+  and of at least {{CL_TOP_S}} in about {{CL_TOP_T}}, again the same at every shape size.
+  {{CL_GROWTH}}</p>
+  <p>The two together account for the million-cell reading without a million-cell run. Lay
+  {{CL_SYN_K}} unrelated stretches of the 4,000-cell record side by side, take the largest clump
+  among them at each moment, and the result behaves like one shape of 1,024,000 cells: a largest
+  clump of {{CL_SYN_MEAN}}&nbsp;&plusmn;&nbsp;{{CL_SYN_ERR}} cells on average, remembered for
+  {{CL_SYN_TAU}}&nbsp;&plusmn;&nbsp;{{CL_SYN_TAU_ERR}} moves per cell. The real runs gave
+  {{CL_HERO_MEAN}} cells and {{CL_HERO_TAU}}&nbsp;&plusmn;&nbsp;{{CL_HERO_TAU_ERR}}.</p>
+  <p>So the relaxation time quoted above needs a qualification. About {{CV_TAU_MODE}} moves per
+  cell is the time for the properties a typical shape has plenty of: its radius, its trunk, its
+  perimeter. Above it is a ladder of rarer ones, of the form &ldquo;does the shape contain a ring
+  of at least so many cells,&rdquo; each slower than the last, and the ladder gets taller as
+  the shape grows because larger shapes hold larger rings. In the strict sense, the time to
+  forget the slowest property there is, this walk has no fixed number of moves per cell. The
+  averages reported here hardly notice. {{CL_RARE}}</p>
+  {{CL_FIX}}
   <h3>Starting somewhere absurd</h3>
   <p>{{CV_OTHER}}</p>
 </section>
