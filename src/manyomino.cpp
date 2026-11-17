@@ -95,6 +95,7 @@ struct Sampler {
   std::vector<u32> pend;            // stamp: cell is a pending collision
   std::vector<int> pendList;
   int relK = 1;                     // 1: random-radius relocate, 0: always exact
+  double relA = 2.0;                // the radius K of that test has P(K >= r) = r^-relA
   bool refCP = false;               // use the naive reference cut&paste
   Rng rng;
   double logq = 0.0;                // perimeter tilt: weight exp(logq * t)
@@ -293,7 +294,7 @@ struct Sampler {
     nRel++;
     int ic = rng.below(n), iu = rng.below(n), d = rng.below(4);
     int K = 1 << 30;
-    if (relK) { double u = rng.uni(); K = u < 1e-12 ? (1 << 30) : (int)std::min(1.0e9, 1.0 / std::sqrt(u)); }
+    if (relK) { double u = rng.uni(); K = u < 1e-12 ? (1 << 30) : (int)std::min(1.0e9, relA == 2.0 ? 1.0 / std::sqrt(u) : std::pow(u, -1.0 / relA)); }
     if (iu == ic) return;
     int sx = X[iu] + DX[d], sy = Y[iu] + DY[d];
     int cx = X[ic], cy = Y[ic];
@@ -665,7 +666,7 @@ static double now() {
 int main(int argc, char **argv) {
   int n = 100, lgW = 0; u64 seed = 1; double pcp = 0.5, tsec = 0; u64 moves = 1000000, every = 0, burn = 0;
   std::string seedShape = "rect", out = "", mode = "run", load = "", snap = ""; double p = 0; u64 snapEvery = 0; int full = 1;
-  int smax = -1, relK = 1, refCP = 0, inflate = 1, revtest = 0; double ppv = 0, ckptSec = 120; std::string ckpt = "", feat = "";
+  int smax = -1, relK = 1, refCP = 0, inflate = 1, revtest = 0; double ppv = 0, ckptSec = 120, relA = 2.0; std::string ckpt = "", feat = "", blobs = "";
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     auto nxt = [&]() { return std::string(argv[++i]); };
@@ -690,10 +691,12 @@ int main(int argc, char **argv) {
     else if (a == "-inflate") inflate = atoi(nxt().c_str());
     else if (a == "-revtest") revtest = atoi(nxt().c_str());
     else if (a == "-relK") relK = atoi(nxt().c_str());
+    else if (a == "-relA") relA = atof(nxt().c_str());
     else if (a == "-ref") refCP = atoi(nxt().c_str());
     else if (a == "-ppv") ppv = atof(nxt().c_str());
     else if (a == "-tsec") tsec = atof(nxt().c_str());
     else if (a == "-feat") feat = nxt();
+    else if (a == "-blobs") blobs = nxt();
     else { fprintf(stderr, "unknown arg %s\n", a.c_str()); return 1; }
   }
   std::vector<std::pair<int,int>> cells;
@@ -737,7 +740,7 @@ int main(int argc, char **argv) {
   S.place(cells);
   if (p > 0) S.logq = std::log(1.0 - p);
   if (smax >= 0) S.smax = std::min(smax, (n - 1) / 2);
-  S.relK = relK; S.refCP = refCP; S.revTest = revtest;
+  S.relK = relK; S.relA = relA; S.refCP = refCP; S.revTest = revtest;
   u64 thr = (u64)(pcp * 18446744073709551615.0), thr2 = (u64)((pcp + ppv) * 18446744073709551615.0);
   auto step = [&]() { u64 r = S.rng.next(); if (r < thr) S.cutpaste(false); else if (r < thr2) S.cutpaste(true); else S.relocate(); };
 
@@ -860,6 +863,13 @@ int main(int argc, char **argv) {
     ff = fopen(feat.c_str(), "wb");
     FILE *fn = fopen((feat + ".names").c_str(), "w"); fprintf(fn, "move"); for (auto &s : Features::names()) fprintf(fn, " %s", s.c_str()); fprintf(fn, "\n"); fclose(fn);
   }
+  // -blobs FILE: at every sample, the size of the largest loop-connected clump (uint32) and the
+  // number of clumps of at least each size in FILE.sizes (uint16 each)
+  FILE *fb = nullptr; BlobHist BH; std::vector<uint16_t> bc;
+  if (!blobs.empty()) {
+    fb = fopen(blobs.c_str(), "wb");
+    FILE *fn = fopen((blobs + ".sizes").c_str(), "w"); for (int t : BlobHist::thresholds()) fprintf(fn, "%d ", t); fprintf(fn, "\n"); fclose(fn);
+  }
   double t0 = now(), lastCkpt = t0;
   u64 m = 0; int snapIdx = 0;
   for (; m < moves; m++) {
@@ -870,6 +880,7 @@ int main(int argc, char **argv) {
       fprintf(fo, "%" PRIu64 " %.2f %.6g %.5f %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld\n", m + 1, now() - t0, o.rg2, o.asph, o.perim, o.cycles, o.noncut, o.leaves, o.w, o.h, o.holes, o.deg[1], o.deg[2], o.deg[3], o.deg[4]);
       fflush(fo);
       if (ff && (m + 1) >= burn) { FT.compute(S.X.data(), S.Y.data(), n, fv); double mv = (double)(m + 1); fwrite(&mv, 8, 1, ff); fwrite(fv.data(), 8, fv.size(), ff); fflush(ff); }
+      if (fb && (m + 1) >= burn) { uint32_t bm = (uint32_t)BH.compute(S.X.data(), S.Y.data(), n, bc); fwrite(&bm, 4, 1, fb); fwrite(bc.data(), 2, bc.size(), fb); }
       if (!ckpt.empty() && now() - lastCkpt > ckptSec) {   // rolling checkpoint, replaced atomically
         std::string tmp = ckpt + ".tmp";
         FILE *f = fopen(tmp.c_str(), "wb"); int32_t hdr = n; fwrite(&hdr, 4, 1, f);

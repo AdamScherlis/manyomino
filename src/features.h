@@ -160,3 +160,49 @@ struct Features {
                      dmean, (double)dmax, (double)diam, span, cenOff, (double)deep / n}) f.push_back(v);
   }
 };
+
+// Sizes of the loop-connected clumps ("blobs": maximal sets of cells that stay connected when
+// any one adjacency is cut) and nothing else, for -blobs.  counts[k] is the number of clumps
+// of at least thresholds()[k] cells; the return value is the size of the largest.
+struct BlobHist {
+  std::vector<int32_t> grid; std::vector<int> disc, low, par, stk, cstk; std::vector<unsigned char> pit;
+  static const std::vector<int> &thresholds() {
+    static std::vector<int> v;
+    if (v.empty()) for (int k = 0; k < 40; k++) v.push_back((int)std::ceil(4 * std::pow(2.0, k / 4.0) - 1e-9));
+    return v;
+  }
+  long compute(const int32_t *X, const int32_t *Y, int n, std::vector<uint16_t> &counts) {
+    const std::vector<int> &th = thresholds(); counts.assign(th.size(), 0);
+    int xmin = X[0], xmax = X[0], ymin = Y[0], ymax = Y[0];
+    for (int i = 0; i < n; i++) { xmin = std::min(xmin, X[i]); xmax = std::max(xmax, X[i]); ymin = std::min(ymin, Y[i]); ymax = std::max(ymax, Y[i]); }
+    const int gw = xmax - xmin + 3, gh = ymax - ymin + 3;
+    grid.assign((size_t)gw * gh, 0);
+    auto at = [&](int i) { return (size_t)(Y[i] - ymin + 1) * gw + (X[i] - xmin + 1); };
+    for (int i = 0; i < n; i++) grid[at(i)] = i + 1;
+    const long nb[4] = {1, gw, -1, -(long)gw};
+    disc.assign(n, 0); low.assign(n, 0); par.assign(n, -1); pit.assign(n, 0); stk.clear(); cstk.clear();
+    int timer = 0; long blobMax = 1;
+    stk.push_back(0); cstk.push_back(0); disc[0] = low[0] = ++timer;
+    while (!stk.empty()) {
+      const int v = stk.back();
+      if (pit[v] < 4) {
+        const int32_t a = grid[at(v) + nb[pit[v]++]];
+        if (a <= 0) continue;
+        const int w = a - 1;
+        if (!disc[w]) { par[w] = v; disc[w] = low[w] = ++timer; stk.push_back(w); cstk.push_back(w); }
+        else if (w != par[v]) low[v] = std::min(low[v], disc[w]);
+      } else {
+        stk.pop_back();
+        const int p = par[v];
+        if (p >= 0) low[p] = std::min(low[p], low[v]);
+        if (p < 0 || low[v] > disc[p]) {        // the edge to the parent is a bridge: v closes a clump
+          long c = 0; int u;
+          do { u = cstk.back(); cstk.pop_back(); c++; } while (u != v);
+          blobMax = std::max(blobMax, c);
+          for (size_t k = 0; k < th.size() && th[k] <= c; k++) if (counts[k] < 65535) counts[k]++;
+        }
+      }
+    }
+    return blobMax;
+  }
+};
