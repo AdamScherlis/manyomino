@@ -32,7 +32,7 @@ def series(J, lo=8, rel=0.4):
 def clump_report(hero=None):
     """(chart data, text tokens) for the page; hero is D["hero_slow"] when the largest runs were timed"""
     J = load("clumps.json"); ring = load("clump_ring.json"); A1 = load("clumps_a1.json")
-    T = {k: "" for k in ("CL_FIX", "CL_RARE", "CL_GROWTH")}; D = {}
+    T = {k: "" for k in ("CL_FIX", "CL_RARE", "CL_GROWTH", "CL_CHECK", "CL_SYN_ALT")}; D = {}
     if not J or not ring: return D, T
     P = pooled(J); sizes = sorted(J["sizes"], key=int); rows = [J["sizes"][n] for n in sizes]
     D["clump"] = {"ring": ring, "base": series(J), "pooled": [[s, round(t, 2), round(e, 2)] for s, (t, e) in P.items()]}
@@ -98,6 +98,8 @@ def clump_report(hero=None):
             f"<p>The ladder goes away. With the new rule the count of clumps of at least 16 cells is forgotten in {Q[16][0]:.1f} moves per cell, and of at least "
             f"{top} cells in {Q[top][0]:.1f}, where the original took {P[16][0]:.0f} and {P[top][0]:.0f}. Large clumps no longer outlast small ones."
             f"{direct}</p>" + trunk)
+    T["CL_CHECK"] = (" The cause is known: large rings of cells, which the walk is slow to open, and which get larger and slower as the shape grows "
+                     "(<a href=\"#loops\">above</a>)." + (" A changed rule for the move removes the effect in tests but was not used for these results." if T["CL_FIX"] else ""))
     if hero and hero.get("blob"):
         T["CL_HERO_TAU"] = f"{hero['blob'][0]:.0f}"; T["CL_HERO_TAU_ERR"] = f"{hero['blob'][1]:.0f}"; T["CL_HERO_MEAN"] = f"{hero['blob_mean']:.0f}"
     return D, T
