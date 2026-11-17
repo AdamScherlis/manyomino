@@ -77,14 +77,16 @@ def clump_report(hero=None):
         if fn:
             tr = [obs(n, "trunk01") for n in fn]
             same = all(abs(q["tau"] - q["base"]) < 2 * math.hypot(q["err"], q["base_err"]) for q in tr)
+            zmax = max(abs(q["tau"] - q["base"]) / math.hypot(q["err"], q["base_err"]) for q in tr)
             trunk = ("<p>It does nothing for the trunk, which was never about rings: " +
                      " and ".join(f"{q['tau']:.0f}&nbsp;&plusmn;&nbsp;{q['err']:.0f} moves per cell at {int(n):,} cells "
                                   f"(before, {q['base']:.0f}&nbsp;&plusmn;&nbsp;{q['base_err']:.0f})" for n, q in zip(fn, tr)) +
-                     (". " if same else ". The readings differ by more than their error bars, which at these run lengths are themselves rough. ") +
+                     (f". The largest difference is {zmax:.1f} times its error bar, on the shorter of the two runs. " if same else
+                      ". The readings differ by more than their error bars, which at these run lengths are themselves rough. ") +
                      "It cannot make anything worse, either. A larger box only ever allows more moves, so the new walk makes every move the original makes at least as often, "
                      "and a theorem of Peskun&rsquo;s from 1973 says that such a walk remembers no average longer than the original does, counted in moves. "
-                     "So the trunk is once again the slowest property found, the cost of an independent sample of anything "
-                     "reported here stays where it was, and the new rule is worth having because it removes the one known way for the walk to get slower with size. "
+                     f"So the trunk is once again the slowest property found, an independent sample of anything reported here takes as many moves as before "
+                     f"(and {cost}% more computer time), and the new rule is worth having because it removes the one known way for the walk to get slower with size. "
                      "Every number on this page was produced with the original rule. The new one is an option in the code, not yet the default.</p>")
         T["CL_FIX"] = (
             "<h3>Drawing larger boxes</h3>"
