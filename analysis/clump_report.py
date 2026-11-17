@@ -75,11 +75,16 @@ def clump_report(hero=None):
                       f"against {hero['blob'][0]:.0f}&nbsp;&plusmn;&nbsp;{hero['blob'][1]:.0f} before.")
         trunk = ""
         if fn:
+            tr = [obs(n, "trunk01") for n in fn]
+            same = all(abs(q["tau"] - q["base"]) < 2 * math.hypot(q["err"], q["base_err"]) for q in tr)
             trunk = ("<p>It does nothing for the trunk, which was never about rings: " +
-                     " and ".join(f"{obs(n, 'trunk01')['tau']:.0f}&nbsp;&plusmn;&nbsp;{obs(n, 'trunk01')['err']:.0f} moves per cell at {int(n):,} cells "
-                                  f"(before, {obs(n, 'trunk01')['base']:.0f}&nbsp;&plusmn;&nbsp;{obs(n, 'trunk01')['base_err']:.0f})" for n in fn) +
-                     ". The radius is unchanged too. So the trunk is once again the slowest property found, the cost of an independent sample of anything "
-                     "reported here stays where it was, and the new rule is worth having mainly because it removes the one known way for the walk to get slower with size. "
+                     " and ".join(f"{q['tau']:.0f}&nbsp;&plusmn;&nbsp;{q['err']:.0f} moves per cell at {int(n):,} cells "
+                                  f"(before, {q['base']:.0f}&nbsp;&plusmn;&nbsp;{q['base_err']:.0f})" for n, q in zip(fn, tr)) +
+                     (". " if same else ". The readings differ by more than their error bars, which at these run lengths are themselves rough. ") +
+                     "It cannot make anything worse, either. A larger box only ever allows more moves, so the new walk makes every move the original makes at least as often, "
+                     "and a theorem of Peskun&rsquo;s from 1973 says that such a walk remembers no average longer than the original does, counted in moves. "
+                     "So the trunk is once again the slowest property found, the cost of an independent sample of anything "
+                     "reported here stays where it was, and the new rule is worth having because it removes the one known way for the walk to get slower with size. "
                      "Every number on this page was produced with the original rule. The new one is an option in the code, not yet the default.</p>")
         T["CL_FIX"] = (
             "<h3>Drawing larger boxes</h3>"
@@ -96,3 +101,53 @@ def clump_report(hero=None):
     if hero and hero.get("blob"):
         T["CL_HERO_TAU"] = f"{hero['blob'][0]:.0f}"; T["CL_HERO_TAU_ERR"] = f"{hero['blob'][1]:.0f}"; T["CL_HERO_MEAN"] = f"{hero['blob_mean']:.0f}"
     return D, T
+
+
+def clump_md():
+    """markdown summary for the README (analysis/clumps.md)"""
+    J = load("clumps.json"); A1 = load("clumps_a1.json")
+    if not J: return []
+    sizes = sorted(J["sizes"], key=int); Q = pooled(A1, lo=4) if A1 else {}
+    def cell(rows, s, rel=0.5):
+        r = next((q for q in rows if q[0] == s), None)
+        return f"{r[1]:.1f} ± {r[2]:.1f}" if r and r[2] == r[2] and 0 < r[2] <= rel * r[1] else ""
+    dens = {}
+    for n in sizes:
+        for s, d, de in J["sizes"][n]["density"]:
+            if de > 0: a = dens.setdefault(s, [0.0, 0.0]); a[0] += d / de ** 2; a[1] += 1 / de ** 2
+    md = ["| clump of at least | per cell | " + " | ".join(f"lasts, {int(n):,} cells" for n in sizes) + (" | lasts with `-relA 1` |" if A1 else " |"),
+          "|---:|---:|" + "---:|" * (len(sizes) + (1 if A1 else 0))]
+    for s in (4, 8, 16, 32, 64, 128, 182, 256, 363):
+        if s not in dens: continue
+        row = [cell(J["sizes"][n]["tau"], s) for n in sizes]
+        if not any(row): continue
+        md.append(f"| {s} cells | {dens[s][0] / dens[s][1]:.3g} | " + " | ".join(row) + (f" | {Q[s][0]:.1f} ± {Q[s][1]:.1f} |" if s in Q else (" | |" if A1 else " |")))
+    md += ["", "Times are integrated autocorrelation times, in moves per cell, of the number of clumps of at least that size "
+           f"({', '.join(f'{J['sizes'][n]['samples']:,} samples at {int(n):,} cells' for n in sizes)}, one per move per cell; errors by leaving out blocks)."]
+    md += ["", "| cells | largest clump, mean | its time | with `-relA 1`: mean | time |", "|---:|---:|---:|---:|---:|"]
+    for n in sorted(set(sizes) | set(A1["sizes"] if A1 else []), key=int):
+        a = J["sizes"].get(n, {}).get("max"); b = (A1 or {"sizes": {}})["sizes"].get(n, {}).get("max")
+        f = lambda m: (f"{m['mean']:.1f} ± {m['err']:.1f} | {m['tau']:.1f} ± {m['tau_err']:.1f}" if m else " | ")
+        md.append(f"| {int(n):,} | {f(a)} | {f(b)} |")
+    syn = [x for x in J["synthetic"] if x["K"] >= 64]
+    if syn:
+        md += ["", "The largest clump of K independent stretches of a smaller record, taken together as one shape of K times the size "
+               "(time: median over 24 relative alignments of the stretches, with the larger of their spread and the block error):", "",
+               "| stands for | built from | largest clump, mean | its time | range over alignments |", "|---:|---|---:|---:|---|"]
+        for x in syn:
+            md.append(f"| {x['n']:,} | {x['K']} × {x['from']:,} | {x['mean']:.0f} ± {x['err']:.0f} | {x['tau']:.0f} ± {x['tau_err']:.0f} | {x['tau_lo']:.0f} to {x['tau_hi']:.0f} |")
+    if A1 and A1.get("feat"):
+        md += ["", "Other observables with `-relA 1` against the default (`conv/` chains), moves per cell:", "",
+               "| observable | " + " | ".join(f"{int(n):,}: default | {int(n):,}: `-relA 1`" for n in sorted(A1["feat"], key=int)) + " |", "|---|" + "---:|---:|" * len(A1["feat"])]
+        for nm in ("trunk01", "trunk03", "trunk10", "perim", "rg2", "blob_max"):
+            cells = []
+            for n in sorted(A1["feat"], key=int):
+                q = next(r for r in A1["feat"][n]["rows"] if r["name"] == nm); cells.append(f"{q['base']:.1f} ± {q['base_err']:.1f} | {q['tau']:.1f} ± {q['err']:.1f}")
+            md.append(f"| {nm} | " + " | ".join(cells) + " |")
+        r = [(int(n), J["rate"][n], A1["rate"][n]) for n in sorted(A1.get("rate", {}), key=int) if n in J.get("rate", {})]
+        if r: md += ["", "Speed, million moves per second (default, `-relA 1`): " + "; ".join(f"{n:,} cells: {a:.2f}, {b:.2f}" for n, a, b in r) + "."]
+    return md
+
+
+if __name__ == "__main__":
+    md = clump_md(); open(os.path.join(ROOT, "analysis", "clumps.md"), "w").write("\n".join(md) + "\n"); print("\n".join(md))

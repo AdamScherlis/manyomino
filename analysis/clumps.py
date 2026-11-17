@@ -40,8 +40,9 @@ def load(sub="clump"):
         rec = np.dtype([("max", "<u4"), ("c", "<u2", (len(th),))])
         a = np.fromfile(fn, dtype=rec, count=os.path.getsize(fn) // rec.itemsize)
         n = int(re.search(r"_n(\d+)", fn).group(1)); tag = os.path.basename(fn)[3]
-        out.setdefault(n, {}).setdefault(tag, []).append(a)
-    return th, {n: [np.concatenate(v) for v in d.values()] for n, d in out.items()}
+        if len(a): out.setdefault(n, {}).setdefault(tag, []).append(a)
+    out = {n: [np.concatenate(v) for v in d.values()] for n, d in out.items()}
+    return th, {n: [c for c in ch if len(c) >= 64] for n, ch in out.items() if any(len(c) >= 64 for c in ch)}       # too short to time: left out
 
 
 def acov_sums(x, maxlag):
