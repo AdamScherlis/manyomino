@@ -102,6 +102,38 @@ def synthetic(chains, K, shifts=None):
 NARR = 24          # alignments tried for each put-together shape
 
 
+def rates(sub):
+    """million moves per second of each chain that recorded only clump sizes"""
+    out = {}
+    for fn in sorted(glob.glob(os.path.join(ROOT, sub, "ts_*_n*.part*.txt"))):
+        if os.path.exists(fn.replace(".txt", ".feat")): continue
+        last = open(fn).read().strip().split("\n")[-1].split(); n = re.search(r"_n(\d+)", fn).group(1)
+        out.setdefault(n, []).append(float(last[0]) / float(last[1]) / 1e6)
+    return {n: float(np.mean(v)) for n, v in out.items()}
+
+
+def feat_compare(sub):
+    """autocorrelation time of every library measurement in the chains of this directory that
+    recorded them (-feat), next to the same estimate from the default-kernel chains in conv/"""
+    def read(fn, burn=0.0):
+        names = open(fn + ".names").read().split(); a = np.fromfile(fn, dtype=np.float64)
+        a = a[: len(a) // len(names) * len(names)].reshape(-1, len(names)); return names[1:], a[int(len(a) * burn):, 1:]
+    out = {}
+    for fn in sorted(glob.glob(os.path.join(ROOT, sub, "ts_*_n*.part0.feat"))):
+        n = int(re.search(r"_n(\d+)", fn).group(1)); tag = os.path.basename(fn)[3]
+        mine = [read(f)[1] for f in sorted(glob.glob(fn.replace("part0", "part*"))) if not f.endswith(".names")]
+        names = read(fn)[0]; mine = [np.vstack(mine)]
+        base = [read(f, 0.1)[1] for f in sorted(glob.glob(os.path.join(ROOT, "conv", f"u{n}_?.feat")))]
+        rows = []
+        for j, nm in enumerate(names):
+            if any(x[:, j].std() == 0 for x in mine + base): continue
+            t, te = tau_err([x[:, j] for x in mine]); b, be = tau_err([x[:, j] for x in base])
+            rows.append({"name": nm, "tau": t, "err": te, "base": b, "base_err": be})
+        rows.sort(key=lambda q: -q["tau"])
+        out[str(n)] = {"chain": tag, "len": int(sum(len(x) for x in mine)), "base_len": int(sum(len(x) for x in base)), "base_chains": len(base), "rows": rows}
+    return out
+
+
 def powerfit(rows, lo, hi):
     """weighted fit of log y = a + b log s over lo <= s <= hi; rows are [s, y, err, ...].
     Returns (b, error of b, y at s = 64 from the fit)"""
@@ -156,6 +188,13 @@ def main(sub="clump"):
             print(f"synthetic {n * K:>10,} cells from {K:>5} x {n:,}: largest clump {m:.1f} ± {e:.1f}, time {t:.1f} ± {te:.1f} "
                   f"({res[:, 0].min():.0f} to {res[:, 0].max():.0f} over {NARR} alignments; {P:,} moves per cell)")
             K *= 4
+    out["rate"] = rates(sub)
+    if sub != "clump":
+        out["feat"] = feat_compare(sub)
+        for n, r in out["feat"].items():
+            print(f"n={int(n):,}: every measurement timed with the default radius law (conv/, {r['base_len']:,} samples) and with this one ({r['len']:,} samples), moves per cell")
+            for q in r["rows"][:8] + [q for q in r["rows"][8:] if q["name"] in ("rg2", "trunk01", "blob_max")]:
+                print(f"   {q['name']:>10}: {q['base']:6.1f} ± {q['base_err']:4.1f}  ->  {q['tau']:6.1f} ± {q['err']:4.1f}")
     name = "clumps.json" if sub == "clump" else sub.replace("clump", "clumps") + ".json"
     json.dump(out, open(os.path.join(ROOT, "analysis", name), "w"), indent=1)
     return out
