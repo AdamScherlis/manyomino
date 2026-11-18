@@ -49,15 +49,18 @@ def zoom_report():
     worst = lambda t: max(abs(loc(nm, t)[0] - 1) for nm in ("perim", "squares", "deg1", "deg3", "straight"))
     cl = big["clumps"]; ex = lambda t, s: cl[str(t)][str(s)][0] / cl[str(t)][str(s)][1]
     ch = lambda b, t: 100 * big["changed"][str(b)][ti[t]][0]
-    gS = G[SWEEPS]; g64 = G[64]
-    out = [f"<p>The first is the number of squares. Doubling quadruples it. The walk then takes about a quarter of them away again, "
-           f"and the count settles: after {SWEEPS} rounds at {pm(gS)} times the original, after 64 at {pm(g64)}. Scaling predicts a particular number here. A shape twice as wide should have "
-           f"<span class=\"nw\">2<sup>1/&nu;</sup>&nbsp;=&nbsp;{pred:.3f}</span> times the cells. Nothing in the procedure knows &nu;. The walk finds for itself how much shape to leave.</p>"]
+    gl = lambda t: f"{G[t][0]:.3f}"
+    nu_of = lambda m: math.log(2) / math.log(m)
+    out = [f"<p>The first is the number of squares. Doubling quadruples it. The walk then takes about a quarter of them away again, and the count comes to rest between 2.94 and 2.95 times "
+           f"the original: {gl(32)} after 32 rounds, {gl(64)} after 64 and {gl(256)} after 256, each good to about &plusmn;{max(G[32][1], G[64][1], G[256][1]):.3f}. Scaling predicts a particular number here. "
+           f"A shape twice as wide should have <span class=\"nw\">2<sup>1/&nu;</sup>&nbsp;=&nbsp;{pred:.3f}&nbsp;&plusmn;&nbsp;{math.ceil(pred_err * 1000) / 1000:.3f}</span> times the cells, the uncertainty being that of the published "
+           f"exponent. Nothing in the procedure knows &nu;. The walk finds for itself how much shape to leave, to within two parts in a thousand, though the count is still creeping "
+           f"downward at the longest runs and where it finally stops is not settled to better than that.</p>"]
     out.append('</section>\n<section>\n  <div class="two">\n    <div class="chart"><h3>Cells left after doubling</h3>\n'
                '      <p class="sub">Cells in the refined shape &divide; cells in the original, against rounds of the walk. The band is the prediction from the size exponent.</p>\n'
                '      <div id="ch-zoom-mass"></div></div>\n'
                '    <div class="chart"><h3>Refined four times, against sampled</h3>\n'
-               '      <p class="sub">Each dot is one of 60 measurements: how far its average over the refined shapes lies from the sampled average, in standard errors.</p>\n'
+               '      <p class="sub">Each dot is one of 60 measurements: how far its average over the refined shapes lies from the sampled average, in standard errors. Dots on the top or bottom edge are further out than 6.</p>\n'
                '      <div id="ch-zoom-z"></div></div>\n  </div>\n</section>\n<section class="measure">')
     out.append(f"<p>The second is the fine texture. One round after doubling, the shape has {loc('squares', 1)[0]:.1f} times too many 2&times;2 blocks and about "
                f"{ex(1, 32):.0f} times too many loops of 32 cells or more. That excess is expected: every loop survives doubling at twice the width, and wide loops ought to be much rarer than "
@@ -70,30 +73,30 @@ def zoom_report():
             v = X["T"][str(t)]; z = np.array(v["z"]); lo = np.array(isloc)
             big2 = [(names[j], z[j], 100 * (v["mean"][j] / v["eq"][j] - 1)) for j in np.argsort(-np.abs(z)) if abs(z[j]) > 2.5]
             return v, z, lo, big2
-        tt = str(SWEEPS) if str(SWEEPS) in X["T"] else sorted(X["T"], key=int)[0]
-        v, z, lo, big2 = verdict(tt)
-        plain = {"leaves": "tips", "straight": "straight runs", "perim": "perimeter", "deg2": "cells with two neighbours", "deg3": "branchings", "deg4": "crossings",
+        plain = {"leaves": "tips", "straight": "straight runs", "perim": "the perimeter", "deg2": "cells with two neighbours", "deg3": "branchings", "deg4": "cells with four neighbours",
                  "cycles": "loops", "blocks22": "2&times;2 blocks", "holes": "holes", "noncut": "removable cells", "blob_count": "clumps", "blob_cells": "cells in clumps",
-                 "trunk01": "the trunk", "trunk03": "the trunk", "trunk10": "the trunk", "trunk30": "the trunk"}
-        s = (f"<p>The third is everything else. {v['shapes']} samples of 13,650 cells were each refined four times over, with {tt} rounds a time, to about a million cells, and their "
-             f"{len(names)} measurements compared with the million-cell runs. ")
-        rest_big = [b for b in big2 if b[0] not in L]; loc_big = [b for b in big2 if b[0] in L]
-        nd = int((np.abs(z[~lo]) > 2).sum())
-        s += (f"Of the {int((~lo).sum())} that describe the shape at large, from its radius and outline to the length of its trunk, {nd} "
-              f"differ{'s' if nd == 1 else ''} by more than two standard errors and the largest by {np.abs(z[~lo]).max():.1f}; chance alone would give about {0.0455 * (~lo).sum():.0f}. ")
-        if loc_big:
-            s += (f"The other {int(lo.sum())} count small features per cell, and a million cells pin those down to a few parts in ten thousand. There the refined shapes can be told apart: "
-                  + ", ".join(f"{plain.get(nm, nm)} {'+' if d > 0 else '&minus;'}{abs(d):.2f}%" for nm, _, d in loc_big[:4]) + ". ")
-        else:
-            s += (f"The other {int(lo.sum())} count small features per cell, which a million cells pin down to a few parts in ten thousand; the largest difference there is "
-                  f"{np.abs(z[lo]).max():.1f} standard errors. ")
-        others = [t for t in sorted(X["T"], key=int) if t != tt]
-        if others:
-            bits = []
-            for t in others:
-                v2, z2, lo2, b2 = verdict(t)
-                bits.append(f"with {t} rounds, {int((np.abs(z2) > 2).sum())} of {len(names)} beyond two standard errors (largest {np.abs(z2).max():.1f})")
-            s += "For comparison: " + "; ".join(bits) + "."
+                 "trunk01": "the trunk", "trunk03": "the trunk", "trunk10": "the trunk", "trunk30": "the trunk", "bw": "the width of the outline"}
+        Ts = sorted(X["T"], key=int); best = Ts[-1]; v, z, lo, _ = verdict(best); nl = ~lo; nd = int((np.abs(z[nl]) > 2).sum())
+        s = (f"<p>The third is everything else. {v['shapes']} samples of 13,650 cells were each refined four times over, to about a million cells, and their {len(names)} measurements "
+             f"compared with the million-cell runs. {int(nl.sum())} of them describe the shape at large, from its radius and outline to the length of its trunk. Those agree at every "
+             f"number of rounds tried: " + "; ".join(f"with {t} rounds, {int((np.abs(np.array(X['T'][t]['z'])[nl]) > 2).sum())}" for t in Ts)
+             + f" lie beyond two standard errors, where chance alone would give about {0.0455 * nl.sum():.0f}. ")
+        jb = int(np.argmax(np.where(nl, np.abs(z), 0))); st = X.get("start")
+        if st and abs(st["z"][jb]) > 1.5 and st["z"][jb] * z[jb] > 0 and st["percent"][jb] is not None:
+            s += (f"The largest, {plain.get(names[jb], names[jb])} at {abs(z[jb]):.1f} with {best} rounds, is not the refinement&rsquo;s doing. The {st['shapes']} starting samples happen to have "
+                  f"{'longer trunks' if names[jb].startswith('trunk') else 'a larger value'} than average for their size, by {abs(st['percent'][jb]):.1f}%, and the refined shapes have kept that: "
+                  f"{abs(100 * (v['mean'][jb] / v['eq'][jb] - 1)):.1f}%. ")
+        def worst(t):
+            vv = X["T"][t]; zz = np.array(vv["z"]); c = [(abs(100 * (vv["mean"][k] / vv["eq"][k] - 1)), names[k]) for k in range(len(names)) if lo[k] and abs(zz[k]) > 2]
+            return max(c) if c else None
+        s += (f"The other {int(lo.sum())} count small features per cell, which a million cells fix to a few parts in ten thousand, so they show how many rounds the fine texture needs. ")
+        parts = []
+        for t in Ts:
+            w = worst(t)
+            parts.append((f"with {t} rounds the worst is off by " if not parts else f"with {t} by ") + (f"{w[0]:.1f}%" if w[0] >= 0.095 else f"{w[0]:.2f}%") if w else
+                         f"and with {t} none can be told apart (the largest difference is {np.abs(np.array(X['T'][t]['z'])[lo]).max():.1f} standard errors)")
+        s += (", ".join(parts) + ". ").replace("w", "W", 1)
+        if str(SWEEPS) in X["T"]: s += f"The zoom above uses {SWEEPS} rounds, to keep up with the camera."
         out.append(s + "</p>")
     Dp = load("zoom_deep.json"); deep = ""
     if Dp:

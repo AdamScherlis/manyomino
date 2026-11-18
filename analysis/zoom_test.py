@@ -58,6 +58,22 @@ def refined(T, expo):
     return np.array(rows), np.array(ns)
 
 
+def starting(names):
+    """the starting samples against equilibrium at their own size (zoomtest/ref): the same
+    difference, in the same units, before any refinement"""
+    B = []; A = []
+    for fn in sorted(glob.glob(os.path.join(ROOT, "zoomtest", "ref", "r?.feat"))):
+        a = np.fromfile(fn); a = a[: len(a) // 61 * 61].reshape(-1, 61)[:, 1:]; L = len(a) // 8; A.append(a)
+        B += [a[i * L:(i + 1) * L].mean(0) for i in range(8)]
+    P = np.array([np.fromfile(fn)[1:] for fn in sorted(glob.glob(os.path.join(ROOT, "zoomtest", "base_?_000?.feat")))])
+    if not B or len(P) < 4: return None
+    B = np.array(B); mu = B.mean(0); err = B.std(0, ddof=1) / math.sqrt(len(B)); sd = np.vstack(A).std(0, ddof=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        z = np.where(sd > 0, (P.mean(0) - mu) / np.sqrt(sd ** 2 / len(P) + err ** 2), 0.0)
+        pct = np.where(np.abs(mu) > 8 * err, 100 * (P.mean(0) / mu - 1), float("nan"))
+    return {"shapes": len(P), "readings": int(sum(len(a) for a in A)), "z": [float(v) for v in z], "percent": [None if v != v else float(v) for v in pct]}
+
+
 def levels(T):
     """growth of the cell count at each level, from the logs"""
     m = {}
@@ -74,6 +90,11 @@ def main():
     names, mu, mu_err, sd, nb, nr = reference(); expo = exponents(names, mu, mu_err)
     out = {"names": names, "local": list(LOCAL), "blocks": nb, "readings": nr, "exponent": [float(v) for v in expo], "T": {}}
     print(f"equilibrium: {nr} readings in {nb} blocks of {BLOCK} moves per cell")
+    st = starting(names)
+    if st:
+        out["start"] = st; zs0 = np.array(st["z"])
+        print(f"starting samples against equilibrium at their size ({st['readings']} readings): beyond 2: {int((np.abs(zs0) > 2).sum())}, largest {np.abs(zs0).max():.1f}: "
+              + ", ".join(f"{names[j]} {zs0[j]:+.1f}" for j in np.argsort(-np.abs(zs0))[:4]))
     print("grow with size: " + " ".join(f"{nm}^{e:.2f}" for nm, e in zip(names, expo) if abs(e) > 0.02))
     for T in Ts:
         Z, ns = refined(T, expo)
@@ -92,6 +113,9 @@ def main():
                        "growth": {str(k): [float(np.mean(lv[k])), float(np.std(lv[k], ddof=1) / math.sqrt(len(lv[k])))] for k in (1, 2, 3, 4) if k in lv},
                        "cells": [float(ns.mean()), float(ns.std(ddof=1))], "mean": [float(v) for v in zm], "sem": [float(v) for v in zs / math.sqrt(len(Z))],
                        "eq": [float(v) for v in mu], "eq_err": [float(v) for v in mu_err]}
+        if st:      # the same comparison with the starting samples' own differences taken off
+            d = z - np.array(st["z"]) * 1.0; nl = ~loc
+            print(f"  the rest, less what the starting samples already show: rms {math.sqrt((d[nl] ** 2).mean()):.2f}, largest {np.abs(d[nl]).max():.1f}")
     json.dump(out, open(os.path.join(ROOT, "analysis", "zoom_test.json"), "w"))
 
 

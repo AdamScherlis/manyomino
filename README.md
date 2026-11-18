@@ -415,7 +415,7 @@ Three checks (`scripts/zoom_relax.sh`, `scripts/zoom_test.sh`; tables by
 | 32 | 2.9568 ± 0.0047 | 2.9500 ± 0.0030 | 2.9521 ± 0.0006 | 0.994 ± 0.004 | 1.001 ± 0.000 | 1.002 ± 0.001 | 0.999 ± 0.001 | 43% | 10% | 3% |
 | 64 | 2.9435 ± 0.0058 | 2.9420 ± 0.0044 | 2.9473 ± 0.0008 | 0.996 ± 0.003 | 1.000 ± 0.001 | 1.000 ± 0.001 | 0.999 ± 0.001 | 52% | 12% | 3% |
 | 128 | 2.9508 ± 0.0104 | 2.9352 ± 0.0055 | 2.9386 ± 0.0049 | 0.995 ± 0.004 | 1.000 ± 0.000 | 1.001 ± 0.001 | 0.999 ± 0.002 | 61% | 15% | 4% |
-| 256 | 2.9416 ± 0.0112 | 2.9423 ± 0.0050 | 2.9422 ± 0.0046 | 1.001 ± 0.003 | 1.000 ± 0.001 | 1.000 ± 0.001 | 0.999 ± 0.001 | 72% | 19% | 5% |
+| 256 | 2.9416 ± 0.0112 | 2.9423 ± 0.0050 | 2.9435 ± 0.0011 | 1.001 ± 0.003 | 1.000 ± 0.001 | 1.000 ± 0.001 | 0.999 ± 0.001 | 72% | 19% | 5% |
 | 512 | 2.9369 ± 0.0138 | 2.9493 ± 0.0069 | 2.9468 ± 0.0062 | 0.997 ± 0.003 | 1.001 ± 0.000 | 1.001 ± 0.001 | 0.999 ± 0.002 | 85% | 24% | 7% |
 | 1024 | 2.9218 ± 0.0258 | 2.9505 ± 0.0094 | 2.9471 ± 0.0089 | 1.000 ± 0.004 | 1.000 ± 0.001 | 1.000 ± 0.001 | 0.999 ± 0.002 | 97% | 29% | 8% |
 
@@ -436,19 +436,27 @@ Loop-connected clumps of at least that many cells, relative to the equilibrium n
 | 16 | 32 | 1,048,092 ± 7,077 | 2.9599, 2.9630, 2.9577, 2.9600 | 8 | 22.5 | 1 | 2.1 | leaves +22.5 (+0.66%), deg2 -20.7 (-0.38%), noncut +9.6 (+0.32%) |
 | 32 | 32 | 1,037,350 ± 7,864 | 2.9537, 2.9535, 2.9505, 2.9525 | 7 | 9.8 | 3 | 2.6 | leaves +9.8 (+0.29%), deg2 -9.1 (-0.17%), noncut +5.5 (+0.18%) |
 | 64 | 32 | 1,031,145 ± 11,354 | 2.9513, 2.9458, 2.9478, 2.9476 | 3 | 3.1 | 2 | 2.6 | deg2 -3.1 (-0.06%), cen_m1 -2.6 (-4.12%), deg3 +2.6 (+0.08%) |
+| 256 | 32 | 1,026,739 ± 13,404 | 2.9487, 2.9422, 2.9468, 2.9424 | 0 | 1.1 | 3 | 2.9 | trunk01 +2.9 (+2.14%), trunk03 +2.9 (+3.63%), bw +2.1 (+7.46%) |
 
 Samples of 13,650 cells refined four times, against the equilibrium runs at 1,024,000 cells (1295 readings in 24 blocks). A difference is in standard errors of the mean of that many equilibrium samples.
 <!-- /zoom tables -->
 
-Reading the tables. The cell count settles within a few tens of sweeps at the multiple that
-scaling predicts for a shape of twice the width, 2^(1/ν), which the procedure is never told.
-Doubling leaves several times too many large loops (each survives at twice the width, and
-loops twice as wide should be about twenty times rarer per cell); they are gone within 16
-sweeps. After four refinements in a row the observables that describe the shape at large
-cannot be told from those of sampled million-cell shapes at any of the sweep counts tried,
-while per-cell counts of small features, which a million cells fix to a few parts in ten
-thousand, show how well the fine texture has settled. `analysis/zoom_deep.js` runs the
-browser's engine 400 levels deep and finds its per-cell statistics where they started.
+Reading the tables. The cell count comes to rest between 2.94 and 2.95 times the original:
+2.952, 2.947 and 2.943 after 32, 64 and 256 sweeps (each ± 0.001), against the 2^(1/ν) =
+2.948 ± 0.003 that scaling predicts for a shape of twice the width, which the procedure is
+never told. It is still creeping downward at the longest runs, so the agreement is to about
+two parts in a thousand and no better. Doubling leaves several times too many large loops
+(each survives at twice the width, and loops twice as wide should be about twenty times rarer
+per cell); they are gone within 16 sweeps. After four refinements in a row, the 48 observables
+that describe the shape at large cannot be told from those of sampled million-cell shapes at
+any of the sweep counts tried. The largest difference among them, the trunk at 2.9 standard
+errors, is inherited: the 32 starting samples themselves have trunks 1.6% (`trunk01`) and 3.4%
+(`trunk03`) longer than the average at 13,650 cells, and the refined shapes 2.1% and 3.6%.
+The 12 per-cell counts of small features, which a million cells fix to a few parts in ten
+thousand, show how long the fine texture takes to settle: the worst is off by 0.9% at 16
+sweeps, 0.5% at 32, under 0.1% at 64, and nothing is distinguishable at 256.
+`analysis/zoom_deep.js` runs the browser's engine (32 sweeps a level) 400 levels deep and
+finds its per-cell statistics where they started.
 
 What this is not: a construction of the scaling limit of polyominoes, or evidence beyond four
 doublings, where there are no samples to compare with. Each level is a stand-in for a sample

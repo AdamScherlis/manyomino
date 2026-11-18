@@ -351,13 +351,14 @@
         bands: [{ y0: Z.pred[0] - Z.pred[1], y1: Z.pred[0] + Z.pred[1], color: S3, label: '2 to the power 1/ν', labelAt: Z.pred[0] + Z.pred[1] }],
         series: Z.mass.map((m, i) => ({ name: m.name, color: ramp[i % 2], r: 3, pts: m.pts, line: m.pts.map(p => [p[0], p[1]]) })),
       });
+      const clip = z => Math.max(-6, Math.min(6, z));
       if ($('ch-zoom-z') && Z.test) chart($('ch-zoom-z'), {
         xlog: true, xlabel: 'rounds per level', ylabel: 'standard errors from sampled', xname: 'rounds per level', yname: 'standard errors', ysig: 3, height: 320, noTable: true,
         xdomain: [Math.min(...Z.test.map(t => t.T)) / 1.6, Math.max(...Z.test.map(t => t.T)) * 1.6], ydomain: [-6, 6],
         aria: 'Sixty measurements of shapes refined four times, as differences from sampled shapes in standard errors, for several numbers of rounds per level',
         bands: [{ y0: -2, y1: 2, color: S3, label: 'within two', labelAt: 2 }],
-        series: [{ name: 'the shape at large (48 measurements)', color: S1, r: 2.6, pts: [].concat(...Z.test.map(t => t.rest.map((z, i) => [t.T * Math.pow(1.22, (i % 9 - 4) / 4), z]))) },
-                 { name: 'counts of small features per cell (12)', color: S2, r: 2.6, pts: [].concat(...Z.test.map(t => t.local.map((z, i) => [t.T * Math.pow(1.22, (i % 5 - 2) / 2), z]))) }],
+        series: [{ name: 'the shape at large (48 measurements)', color: S1, r: 2.6, pts: [].concat(...Z.test.map(t => t.rest.map((z, i) => [t.T * Math.pow(1.22, (i % 9 - 4) / 4), clip(z)]))) },
+                 { name: 'counts of small features per cell (12)', color: S2, r: 2.6, pts: [].concat(...Z.test.map(t => t.local.map((z, i) => [t.T * Math.pow(1.22, (i % 5 - 2) / 2), clip(z)]))) }],
       });
     })();
     if ($('ch-fossil') && DATA.fossil) (function () {
