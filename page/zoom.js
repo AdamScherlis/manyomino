@@ -1,17 +1,41 @@
 // In-browser port of src/zoom.cpp, working on a window.
 //
-// A level is a G x G picture (one byte per site) of the part of the shape around the point being
-// zoomed into.  Refining it: the middle of the picture is doubled (every cell becomes a 2x2
-// block) and relaxed by the local walk that adds and removes single cells at the critical weight
-// per cell, for T sweeps.  The doubled cells in an outer collar are held fixed; they stand in
-// for the rest of the shape, which is never needed.  The middle G x G of the result is the next
-// level.  Nothing here depends on how deep the zoom is, so it can go on indefinitely.
+// A level is a G x G picture (one byte per site, 255 where there is a cell) of the part of the
+// shape around the point being zoomed into.  Refining it: the middle half of the picture is
+// doubled (every cell becomes a 2x2 block), giving G x G sites again, and relaxed by the local
+// walk that adds and removes single cells at the critical weight per cell.
+//
+// The walk is not run evenly over the window.  In the middle (out to R0 of the way to the edge)
+// every site gets the full T sweeps.  From there the number of sweeps falls off, halving OCT
+// times before R1, and beyond R1 nothing moves at all.  This is done in stages: the walk runs
+// first on everything inside R1 for a moment, then on a slightly smaller square for twice as
+// long, and so on inward, with whatever lies outside the current square held fixed.  Each stage
+// is the same reversible walk on a smaller region, so the law it aims at is unchanged; the
+// effect is only that the outer part is less far along.  At its edge the new level is therefore
+// exactly the old one drawn with four cells for one, and it turns into fully refined shape
+// gradually on the way in.  A picture assembled from nested levels then has no seams: where one
+// level hands over to the next coarser they are the same picture.
+//
+// The next level must be centred within LIMIT cells of the middle, so that all of it lies in
+// the fully relaxed part of this one.  Nothing here depends on how deep the zoom is.
+// where the sweeps fall off: full out to R0 of the way from the middle to the edge, halving OCT
+// times from there to R1, none beyond
+const ZOOM = { R0: 0.72, R1: 0.94, OCT: 12 };
+// sweeps received at relative distance r from the middle (0 middle, 1 edge), as a share of the full number
+function zoomRate(r) { const m = Math.ceil((r - ZOOM.R0) / (ZOOM.R1 - ZOOM.R0) * ZOOM.OCT - 1e-9); return m <= 0 ? 1 : m > ZOOM.OCT ? 0 : Math.pow(2, -m); }
+// how far from the middle of a level (of G sites) the next may be centred
+function zoomLimit(G) { return Math.floor((ZOOM.R0 - 0.5) * (G >> 1)) - 2; }
+
 function Refiner(G, seed, opt) {
   opt = opt || {};
-  const PAD = 32, COL = 32, W = G + 2 * (PAD + COL), HALF = W >> 1;
-  const Z = 1 / 4.0625696, KMAX = opt.kmax || 48, T = opt.sweeps || 32;
-  const g = new Uint8Array(W * W);                 // bit 0: occupied; bits 1-3: search label + 1
-  let cells = new Int32Array(1 << 17), n = 0;
+  const W = G, C = G >> 1, Z = 1 / 4.0625696, KMAX = opt.kmax || 48, T = opt.sweeps || 32;
+  const R0 = ZOOM.R0, R1 = ZOOM.R1, OCT = ZOOM.OCT;
+  const KA = opt.ka || 0.5;                        // the certificate box has radius K >= r with probability KA / r (r >= 2)
+  const g = new Uint8Array(W * W);                 // bit 0: occupied; bits 1-3: search label + 1; bit 4: held fixed
+  // stage m works on the square rings out to STAGE[m][0], for STAGE[m][1] sweeps; m runs downward
+  const STAGE = []; let TOTAL = 0;
+  for (let m = 0; m <= OCT; m++) STAGE.push([Math.floor(C * (R0 + (R1 - R0) * m / OCT)) - 1, T * (m < OCT ? Math.pow(2, -m - 1) : Math.pow(2, -OCT))]);
+  let cells = new Int32Array(1 << 18), n = 0;
   const QCAP = (2 * KMAX + 1) * (2 * KMAX + 1) + 8;
   const q = [new Int32Array(QCAP), new Int32Array(QCAP), new Int32Array(QCAP), new Int32Array(QCAP)];
   const qn = [0, 0, 0, 0], qh = [0, 0, 0, 0], par = [0, 0, 0, 0];
@@ -20,8 +44,7 @@ function Refiner(G, seed, opt) {
   let s = seed >>> 0;
   function rnd() { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }
   const find = a => { while (par[a] !== a) a = par[a]; return a; };
-  const movable = p => { const x = p % W, y = (p / W) | 0; return x >= COL && x < W - COL && y >= COL && y < W - COL; };
-  let sweepsDone = 0, movesDone = 0, added = 0, removed = 0;
+  let stage = -1, stageSweeps = 0, movesDone = 0, workDone = 0, workAll = 1;
 
   // are the occupied neighbours of site p joined to each other, without p, inside the box of
   // radius K around p?
@@ -63,72 +86,85 @@ function Refiner(G, seed, opt) {
       }
       if (!any) break;
     }
-    for (let a = 0; a < ng; a++) { const qa = q[a]; for (let i = 0, e = qn[a]; i < e; i++) g[qa[i]] &= 1; }
+    for (let a = 0; a < ng; a++) { const qa = q[a]; for (let i = 0, e = qn[a]; i < e; i++) g[qa[i]] &= 17; }
     if (was) g[p] |= 1;
     return ok;
   }
 
+  // One proposal.  Pick a listed cell and one of 8 choices: add at one of its four neighbouring
+  // sites (thinned so that every empty site next to listed cells is proposed equally often), or
+  // remove the cell.  Sites outside the current square carry bit 4 and are never touched.
   function move() {
     const i = (rnd() * n) | 0, c = cells[i], r = (rnd() * 8) | 0;
     if (r < 4) {
       const t = c + DP[r];
-      if ((g[t] & 1) || !movable(t)) return;
-      let k = 0; for (let d = 0; d < 4; d++) { const u = t + DP[d]; if ((g[u] & 1) && movable(u)) k++; }
+      if (g[t] & 17) return;
+      let k = 0; for (let d = 0; d < 4; d++) if ((g[t + DP[d]] & 17) === 1) k++;
       if (k > 1 && ((rnd() * k) | 0) !== 0) return;
       const a = 4 * Z * n / (n + 1);
       if (a < 1 && rnd() >= a) return;
-      const u = rnd(), K = u * KMAX < 1 ? KMAX : (1 / u) | 0;
+      const u = rnd(), K = u >= KA ? 1 : u * KMAX < KA ? KMAX : (KA / u) | 0;
       if (!cert(t, K)) return;
       g[t] |= 1; if (n === cells.length) { const c2 = new Int32Array(n * 2); c2.set(cells); cells = c2; }
-      cells[n++] = t; added++;
+      cells[n++] = t;
     } else {
       if (n <= 1) return;
-      let k = 0; for (let d = 0; d < 4; d++) { const u = c + DP[d]; if ((g[u] & 1) && movable(u)) k++; }
+      let k = 0; for (let d = 0; d < 4; d++) if ((g[c + DP[d]] & 17) === 1) k++;
       if (!k) return;
       const a = n / (4 * Z * (n - 1));
       if (a < 1 && rnd() >= a) return;
-      const u = rnd(), K = u * KMAX < 1 ? KMAX : (1 / u) | 0;
+      const u = rnd(), K = u >= KA ? 1 : u * KMAX < KA ? KMAX : (KA / u) | 0;
       if (!cert(c, K)) return;
-      g[c] &= 254; cells[i] = cells[--n]; removed++;
+      g[c] &= 254; cells[i] = cells[--n];
     }
   }
 
+  // narrow the working square to stage m: everything outside it is marked fixed
+  function enter(m) {
+    stage = m; stageSweeps = 0; const rmax = STAGE[m][0], lo = C - 1 - rmax, hi = C + rmax;      // sites with lo <= x, y <= hi
+    if (m === OCT) {
+      n = 0;
+      for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+        const p = x + y * W, inside = x >= lo && x <= hi && y >= lo && y <= hi;
+        if (!inside) { g[p] |= 16; continue; }
+        if (g[p] & 1) { if (n === cells.length) { const c2 = new Int32Array(n * 2); c2.set(cells); cells = c2; } cells[n++] = p; }
+      }
+    } else {
+      const plo = C - 1 - STAGE[m + 1][0], phi = C + STAGE[m + 1][0];
+      for (let y = plo; y <= phi; y++) for (let x = plo; x <= phi; x++) if (x < lo || x > hi || y < lo || y > hi) g[x + y * W] |= 16;
+      let k = 0; for (let i = 0; i < n; i++) if (!(g[cells[i]] & 16)) cells[k++] = cells[i];
+      n = k;
+    }
+  }
   // begin refining `coarse` (G x G bytes) about the coarse site (fx, fy)
   function start(coarse, fx, fy) {
-    g.fill(0); n = 0; sweepsDone = 0; movesDone = 0; added = removed = 0;
-    const h = HALF >> 1, sx0 = fx - h, sy0 = fy - h;
-    for (let cy = 0; cy < HALF; cy++) {
+    g.fill(0); movesDone = 0; workDone = 0;
+    const h = C >> 1, sx0 = fx - h, sy0 = fy - h; let all = 0;
+    for (let cy = 0; cy < C; cy++) {
       const yy = sy0 + cy; if (yy < 0 || yy >= G) continue;
-      for (let cx = 0; cx < HALF; cx++) {
+      for (let cx = 0; cx < C; cx++) {
         const xx = sx0 + cx; if (xx < 0 || xx >= G || !coarse[xx + yy * G]) continue;
-        const p = 2 * cx + 2 * cy * W;
+        const p = 2 * cx + 2 * cy * W; all += 4;
         g[p] = g[p + 1] = g[p + W] = g[p + W + 1] = 1;
       }
     }
-    for (let y = COL; y < W - COL; y++) for (let x = COL; x < W - COL; x++) if (g[x + y * W]) {
-      if (n === cells.length) { const c2 = new Int32Array(n * 2); c2.set(cells); cells = c2; }
-      cells[n++] = x + y * W;
-    }
+    enter(OCT); workAll = Math.max(1, T * all * R0 * R0);           // rough, for the progress figure only
   }
   // run for about `ms` milliseconds; true when the level is finished
   function step(ms) {
     const t0 = performance.now();
-    while (sweepsDone < T) {
-      if (n < 1) { sweepsDone = T; break; }
-      const batch = Math.max(1, n >> 3);
+    while (stage >= 0) {
+      if (stageSweeps >= STAGE[stage][1] || n < 1) { if (stage === 0) { stage = -1; break; } enter(stage - 1); continue; }
+      const left = STAGE[stage][1] - stageSweeps, part = Math.min(left, 0.125), batch = Math.max(1, Math.round(n * part));
       for (let k = 0; k < batch; k++) move();
-      movesDone += batch; sweepsDone += 0.125;
+      movesDone += batch; workDone += batch; stageSweeps += part;
       if (performance.now() - t0 >= ms) break;
     }
-    return sweepsDone >= T;
+    return stage < 0;
   }
-  function result() {
-    const out = new Uint8Array(G * G), o = PAD + COL;
-    for (let y = 0; y < G; y++) { const r = (y + o) * W + o; for (let x = 0; x < G; x++) out[x + y * G] = g[r + x] & 1; }
-    return out;
-  }
-  return { start, step, result, G, W, PAD, COL, T, get n() { return n; }, get progress() { return sweepsDone / T; }, get moves() { return movesDone; },
-           grid: g, limit: (G >> 1) - (HALF >> 1) };
+  function result() { const out = new Uint8Array(G * G); for (let p = 0; p < G * G; p++) if (g[p] & 1) out[p] = 255; return out; }
+  return { start, step, result, G, T, R0, R1, OCT, limit: zoomLimit(G), rate: zoomRate,
+           get n() { return n; }, get progress() { return Math.min(1, workDone / workAll); }, get moves() { return movesDone; } };
 }
 
 // the occupied site nearest to (x, y) in a G x G picture, within radius rmax; null if none
@@ -144,4 +180,4 @@ function nearestCell(pic, G, x, y, rmax) {
   }
   return best;
 }
-if (typeof module !== 'undefined') module.exports = { Refiner, nearestCell };
+if (typeof module !== 'undefined') module.exports = { Refiner, nearestCell, ZOOM, zoomRate, zoomLimit };

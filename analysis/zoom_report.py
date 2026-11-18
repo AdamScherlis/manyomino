@@ -6,7 +6,10 @@ import base64, json, math, os
 import numpy as np
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-SWEEPS = 32                   # rounds per level in the browser
+SWEEPS = 16                   # rounds per level in the browser
+# cells left, as a multiple of the original, after t sweeps on a doubled shape (three 64,000-cell samples, src/zoom.cpp):
+# the browser uses it to keep the brightness even where a level has had fewer sweeps than T
+MT = [[0, 4.0], [0.25, 3.6757], [0.5, 3.4798], [0.75, 3.3576], [1, 3.2733], [1.5, 3.1704], [2, 3.1114], [3, 3.0533], [4, 3.023], [6, 2.9953], [8, 2.9796], [12, 2.9708], [16, 2.964]]
 NU, NU_ERR = 0.6412, 0.0005
 
 
@@ -37,7 +40,7 @@ def growth_by_T(R, X):
 def zoom_report():
     R, X = load("zoom_relax.json"), load("zoom_test.json")
     pred = 2 ** (1 / NU); pred_err = pred * math.log(2) / NU ** 2 * NU_ERR
-    D = {"zoom": dict(first_shape(), sweeps=SWEEPS, growth=pred)}; Z = D["zoom"]
+    D = {"zoom": dict(first_shape(), sweeps=SWEEPS, growth=pred, mt=MT, gain=1.15)}; Z = D["zoom"]
     T = {"ZM_N0": f"{Z['n']:,}", "ZM_T": str(SWEEPS), "ZM_RESULTS": ""}
     if not R: return D, T
     pm = lambda v, d=3: f"{v[0]:.{d}f}&nbsp;&plusmn;&nbsp;{v[1]:.{d}f}"
@@ -100,7 +103,7 @@ def zoom_report():
         out.append(s + "</p>")
     Dp = load("zoom_deep.json"); deep = ""
     if Dp:
-        deep = (f" Run {Dp['levels']} levels deep, a magnification of 10<sup>{Dp['levels'] * math.log10(2):.0f}</sup>, it shows no drift: the perimeter per cell averages "
+        deep = (f" Run {Dp['levels']} levels deep, a magnification of 10<sup>{Dp['levels'] * math.log10(2):.0f}</sup>, the fully refined middle of each window shows no drift: the perimeter per cell averages "
                 f"{Dp['first_half'][0]:.4f} over the first half of the levels and {Dp['second_half'][0]:.4f} over the second, against {R['sampled_local']['perim'][0]:.4f} in sampled shapes, "
                 f"and the share of cells that are tips {Dp['first_half'][2]:.4f} and {Dp['second_half'][2]:.4f}, against {R['sampled_local']['deg1'][0]:.4f}.")
     out.append(f"<p>How much of the old picture survives a refinement? Very little at the scale of single squares, and nearly everything at large scales. After {SWEEPS} rounds, "
@@ -108,8 +111,12 @@ def zoom_report():
                f"So the redrawing is local, though there is no sharp scale at which it stops.</p>")
     out.append("<p>The limits should be plain. Nobody has constructed the object that polyominoes of ever more cells converge to, if they do converge, and this does not construct it either. "
                "Each frame is a stand-in for what a sample of that many cells would look like around that point, and the stand-in has been tested as far as four doublings, because "
-               "that is where the largest real samples are. Past that depth nothing has been compared with anything. The version in your browser works on a window around the point "
-               "being approached, holding a border of doubled squares fixed to stand for the rest of the shape." + deep + "</p>")
+               "that is where the largest real samples are. Past that depth nothing has been compared with anything.</p>")
+    out.append(f"<p>The zoom above works on a window around the point being approached, {Dp['G'] if Dp else 2048:,} squares across, and its picture is a nest of such windows, each half the width of "
+               "the one before. Every point on screen is drawn from the finest window that reaches it, so no level is ever exchanged for another where the eye could tell: a new one "
+               "enters at the centre with squares a tenth of a pixel wide. To make each window agree with the coarser one around it, the walk is run for less and less time towards the "
+               "window&rsquo;s edge, and not at all on its outermost part, which is therefore the coarser picture exactly, drawn with four squares for one. A finer level has less ink per "
+               f"unit area, by the same factor {pred:.2f}/4 as before, and is brightened to match." + deep + "</p>")
     T["ZM_RESULTS"] = "\n  ".join(out)
     return D, T
 

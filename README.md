@@ -398,13 +398,28 @@ capped at `-kmax`, default 256), so every move is local and the walk can be run 
 opened, doubling widens every loop, and with a cap of 64 four refinements in a row left the
 largest clump a third too large on average.
 
-`page/zoom.js` is the same walk in JavaScript on a 1,536×1,536 window around one point
-(1,024 on a narrow screen), run in a worker, which is
-what the page's endless zoom runs: each level is the middle of the previous one, doubled and
-relaxed, so the cost per level does not depend on depth (about a second). Cells are drawn
-at 0.75 to 1.5 pixels and the next level fades in at half that, so the hand-over between
-levels happens below the size at which single cells can be made out. Its cap is 48 cells;
-a loop wider than that leaves the window within a few levels.
+`page/zoom.js` is the same walk in JavaScript on a 2,048×2,048 window around one point
+(1,024 on a narrow screen), run in a worker, which is what the page's endless zoom runs. Each
+level is the middle half of the previous one, doubled and relaxed, so the cost per level does
+not depend on depth (about half a second). Three things differ from `src/zoom.cpp`, for speed
+and for a picture without seams. It runs 16 sweeps, not 32 or more. Its certificate box has
+radius `K ≥ r` with probability `1/(2r)`, capped at 48, which halves the searching. And the
+sweeps are not spread evenly: the full number out to 72% of the way from the middle of the
+window to its edge, then half as many on each of 12 successive square rings, and none beyond
+94%. (This is done in stages, on nested squares with the outside held fixed, so each stage is
+the same reversible walk on a smaller region.) At its edge a level is therefore exactly the
+coarser level drawn with four cells for one, and the next level is always centred inside the
+fully relaxed part.
+
+The page draws a nest of these levels in one WebGL2 shader: each point on screen comes from
+the finest level whose window contains it, with area-averaged coverage (mipmaps) since cells
+are 0.1 to 0.65 pixels wide. No level is ever exchanged for another at a visible size; a new
+one enters at the centre at a tenth of a pixel per cell. A level with cells of width `p` is
+brightened by `p^-(2 − 1/ν)`, which is the factor by which finer levels have less ink per
+unit area, and by the measured cell count where it has had fewer sweeps, so the brightness is
+even across the nest and steady in time. Stepping the zoom by a fiftieth of a level at a time
+across a level boundary, the frame-to-frame change stays between 1.4 and 2.3 grey levels out
+of 255 throughout, with no step at any point.
 
 Three checks (`scripts/zoom_relax.sh`, `scripts/zoom_test.sh`; tables by
 `analysis/zoom_report.py`):

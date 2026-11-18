@@ -46,22 +46,32 @@
 
   // ---------------------------------------------------------------- endless zoom
   // Levels are G x G pictures, each twice the resolution of the last and centred on a cell of
-  // it (page/zoom.js).  The camera sits at zoom s: level floor(s) is on screen at 0.75 to 1.5 px
-  // per cell, and the next one fades in over it at half that, so the hand-over happens below
-  // the size at which single cells can be made out.  Levels are made in a worker where the
-  // browser allows one, and a few milliseconds per frame on the main thread where it does not.
+  // it (page/zoom.js).  Every point on screen is drawn from the finest level whose window
+  // contains it, so the picture is a nest of squares, finest in the middle, and no level is ever
+  // exchanged for another at a size where the eye could tell: a new one comes in at the centre
+  // with cells a tenth of a pixel wide, and at its edge a level is identical to the next coarser
+  // one.  Finer levels have less ink per unit area (the shape's dimension is below 2), so each is
+  // brightened by the matching amount, which keeps the brightness even across the nest and
+  // steady in time.  Drawing is one WebGL2 shader, with a plain canvas fallback; levels are made
+  // in a worker where the browser allows one.
   (function () {
     const Z0 = DATA.zoom, cv = $('zoom-canvas'); if (!Z0 || !cv) return;
-    const G = cv.clientWidth > 420 ? 1536 : 1024, P0 = 0.75, AHEAD = 2, IN = [0.5, 0.8], OUT = [0.5, 0.8], ctx = cv.getContext('2d');
-    const LIMIT = (G >> 1) - ((G + 128) >> 2);                    // how far from the middle of a level the next may be centred
+    const small = cv.clientWidth <= 420;
+    let gl = null; try { gl = cv.getContext('webgl2', { alpha: false, antialias: false }); } catch (e) {}
+    if (gl && (gl.getParameter(gl.MAX_TEXTURE_SIZE) < 2048 || gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) < 8)) gl = null;
+    const ctx = gl ? null : cv.getContext('2d');
+    const G = gl && !small ? 2048 : 1024, C = G / 2, LIMIT = zoomLimit(G), LAYERS = 8, MAXDRAW = 6, AHEAD = 4;
+    const P0 = 1.15 * (Math.max(240, cv.clientWidth) / 2) / C;          // px per cell of level k when the zoom s equals k: its window then just covers the view
+    const PMIN = gl ? 0.1 : 0.45, DIM = 2 - 1 / 0.6412;               // a level comes in when its cells reach PMIN px; ink per area goes as (cell size)^DIM
     const bin = atob(Z0.bits), base = new Uint8Array(G * G);
     { const ox = (G - Z0.w) >> 1, oy = (G - Z0.h) >> 1;
-      for (let y = 0; y < Z0.h; y++) for (let x = 0; x < Z0.w; x++) { const i = y * Z0.w + x; if (bin.charCodeAt(i >> 3) >> (i & 7) & 1) base[(x + ox) + (y + oy) * G] = 1; } }
-    let seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0, L = [], s = 0, running = false, userPaused = false, visible = false, raf = 0, last = 0, ink = 0;
+      for (let y = 0; y < Z0.h; y++) for (let x = 0; x < Z0.w; x++) { const i = y * Z0.w + x; if (bin.charCodeAt(i >> 3) >> (i & 7) & 1) base[(x + ox) + (y + oy) * G] = 255; } }
+    let seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0, L = [], s = 0, s0 = 0, kref = 0, cam = [C, C], running = false, userPaused = false, raf = 0, last = 0;
     let R = null, building = -1;                                  // main-thread refinement, used only without a worker
     let worker = null, useWorker = true, busy = false, job = 0, sent = 0;
-    const workerSrc = Refiner.toString() + ';' +
-      'let R=null,key=-1;onmessage=e=>{const m=e.data;if(!R||key!==m.seed){R=Refiner(m.G,m.seed,{sweeps:m.sweeps});key=m.seed;}' +
+    const opts = { sweeps: Z0.sweeps };
+    const workerSrc = 'const ZOOM=' + JSON.stringify(ZOOM) + ';' + zoomRate.toString() + ';' + zoomLimit.toString() + ';' + Refiner.toString() + ';' +
+      'let R=null,key=-1;onmessage=e=>{const m=e.data;if(!R||key!==m.seed){R=Refiner(m.G,m.seed,m.opts);key=m.seed;}' +
       'R.start(m.pic,m.fx,m.fy);while(!R.step(1e9));const pic=R.result();postMessage({id:m.id,pic},[pic.buffer]);};';
     function dropWorker(forGood) { if (worker) worker.terminate(); worker = null; busy = false; job++; if (forGood) useWorker = false; }
     function startWorker() {
@@ -71,87 +81,160 @@
         worker.onerror = () => dropWorker(true);
       } catch (e) { worker = null; useWorker = false; }
     }
-    function inkColour() {
-      const m = /#?([0-9a-f]{6})/i.exec(css('--plate-ink')) || [0, 'E9EBF2'], v = parseInt(m[1], 16);
-      return (255 << 24 | (v & 255) << 16 | (v >> 8 & 255) << 8 | v >> 16) >>> 0;              // ABGR
+    const hex = (v, d) => { const m = /#?([0-9a-f]{6})/i.exec(css(v)) || [0, d], n = parseInt(m[1], 16); return [n >> 16, n >> 8 & 255, n & 255]; };
+
+    // ---- drawing with WebGL2: one pass over the screen, walking the nest from the finest level outwards
+    let prog = null, U = null, lutTex = null;
+    if (gl) {
+      const sh = (type, src) => { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); return o; };
+      prog = gl.createProgram();
+      gl.attachShader(prog, sh(gl.VERTEX_SHADER, '#version 300 es\nvoid main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));gl_Position=vec4(p*2.0-1.0,0.0,1.0);}'));
+      gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `#version 300 es
+precision highp float; precision highp sampler2DArray;
+uniform sampler2DArray u_tex; uniform sampler2D u_lut;
+uniform vec4 u_lv[${MAXDRAW}];        // camera in the level's cells (x, y), cells per device pixel, opacity
+uniform vec4 u_meta[${MAXDRAW}];      // texture layer, brightness, whether the level thins out towards its edge
+uniform int u_n; uniform vec2 u_res; uniform float u_G; uniform vec3 u_bg, u_ink;
+out vec4 o;
+void main() {
+  vec2 d = gl_FragCoord.xy - 0.5 * u_res; d.y = -d.y;
+  float lum = 0.0, rem = 1.0;
+  for (int i = 0; i < ${MAXDRAW}; i++) {
+    if (i >= u_n) break;
+    float z = u_lv[i].z; vec2 uv = (u_lv[i].xy + d * z) / u_G;
+    float r = 2.0 * max(abs(uv.x - 0.5), abs(uv.y - 0.5));
+    float m = (1.0 - smoothstep(0.985, 1.0, r)) * u_lv[i].w;
+    float cov = textureGrad(u_tex, vec3(uv, u_meta[i].x), vec2(z / u_G, 0.0), vec2(0.0, z / u_G)).r;
+    float gf = mix(1.0, textureLod(u_lut, vec2(r, 0.5), 0.0).r, u_meta[i].z);
+    lum += rem * m * u_meta[i].y * gf * cov; rem *= 1.0 - m;
+  }
+  o = vec4(pow(mix(u_bg, u_ink, clamp(lum, 0.0, 1.0)), vec3(1.0 / 2.2)), 1.0);
+}`));
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { console.error('zoom shader: ' + gl.getProgramInfoLog(prog)); }
+      gl.useProgram(prog); gl.bindVertexArray(gl.createVertexArray());
+      U = {}; ['u_tex', 'u_lut', 'u_lv', 'u_meta', 'u_n', 'u_res', 'u_G', 'u_bg', 'u_ink'].forEach(nm => { U[nm] = gl.getUniformLocation(prog, nm); });
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D_ARRAY, gl.createTexture());
+      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 7, gl.R8, G, G, LAYERS);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      // how much of the doubled shape is left at each distance from the middle of a level, as a brightness correction:
+      // where a level has had few sweeps it still has more cells than it will end with
+      const mt = Z0.mt, left = t => { let k = 0; while (k < mt.length - 2 && mt[k + 1][0] < t) k++; const a = mt[k], b = mt[k + 1]; return t >= b[0] ? b[1] : a[1] + (b[1] - a[1]) * (t - a[0]) / (b[0] - a[0]); };
+      const lut = new Uint8Array(256); for (let i = 0; i < 256; i++) lut[i] = Math.round(255 * left(Z0.sweeps) / left(Z0.sweeps * zoomRate((i + 0.5) / 256)));
+      gl.activeTexture(gl.TEXTURE1); lutTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, lutTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 256, 1, 0, gl.RED, gl.UNSIGNED_BYTE, lut);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.uniform1i(U.u_tex, 0); gl.uniform1i(U.u_lut, 1); gl.uniform1f(U.u_G, G);
     }
-    function picture(pic) {
+    function show(lv, j) {                                        // hand a level's picture to whatever draws it
+      if (gl) { gl.activeTexture(gl.TEXTURE0); gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, j % LAYERS, G, G, 1, gl.RED, gl.UNSIGNED_BYTE, lv.pic); gl.generateMipmap(gl.TEXTURE_2D_ARRAY); return; }
       const c = document.createElement('canvas'); c.width = c.height = G;
-      const x = c.getContext('2d'), im = x.createImageData(G, G), d = new Uint32Array(im.data.buffer);
-      for (let i = 0; i < G * G; i++) if (pic[i]) d[i] = ink;
-      x.putImageData(im, 0, 0); return c;
+      const x = c.getContext('2d'), im = x.createImageData(G, G), d = new Uint32Array(im.data.buffer), k = hex('--plate-ink', 'E9EBF2'), ink = (255 << 24 | k[2] << 16 | k[1] << 8 | k[0]) >>> 0;
+      for (let i = 0; i < G * G; i++) if (lv.pic[i]) d[i] = ink;
+      x.putImageData(im, 0, 0); lv.cv = c;
     }
-    function level(pic, focus) { return { pic, focus, cv: picture(pic), from: [G / 2 + 1, G / 2 + 1], f0: 0 }; }   // the camera runs from `from` (at f0) to the focus (at 1)
-    function add(pic) { L.push(level(pic, nearestCell(pic, G, G >> 1, G >> 1, 300) || [G >> 1, G >> 1])); }
+    function add(pic) {
+      const lv = { pic, focus: nearestCell(pic, G, C, C, 300) || [C, C], born: running ? performance.now() : -1e9, taper: 1 };
+      show(lv, L.length); L.push(lv); if (!running) draw();
+    }
+    function forget(from) { for (let i = from; i < L.length; i++) if (L[i] && L[i].cv) L[i].cv.width = 0; L.length = from; building = -1; if (busy) dropWorker(false); }
     function reset() {
-      ink = inkColour(); seed = (seed + 0x9E3779B9) >>> 0; if (busy) dropWorker(false); R = null; building = -1;
-      L.forEach(lv => { if (lv) lv.cv.width = 0; });
+      seed = (seed + 0x9E3779B9) >>> 0; forget(0); R = null;
       // dive towards a randomly chosen cell of the first shape
-      const lim = LIMIT - 8, c = G >> 1; let f = null;
-      for (let t = 0; t < 400 && !f; t++) { const x = c + ((Math.random() * 2 - 1) * lim | 0), y = c + ((Math.random() * 2 - 1) * lim | 0); if (base[x + y * G]) f = [x, y]; }
-      L = [level(base, f || nearestCell(base, G, c, c, lim))];
-      s = Math.min(0, Math.log2(0.92 * Math.max(200, cv.clientWidth) / (Math.max(Z0.w, Z0.h) * P0))); draw();
+      let f = null;
+      for (let t = 0; t < 400 && !f; t++) { const x = C + ((Math.random() * 2 - 1) * LIMIT | 0), y = C + ((Math.random() * 2 - 1) * LIMIT | 0); if (base[x + y * G]) f = [x, y]; }
+      const lv = { pic: base, focus: f || nearestCell(base, G, C, C, LIMIT), born: -1e9, taper: 0 };
+      show(lv, 0); L = [lv]; kref = 0; cam = [C, C];
+      s = s0 = Math.log2(0.92 * Math.max(240, cv.clientWidth) / (Math.max(Z0.w, Z0.h) * P0)); draw();
     }
-    // make levels up to AHEAD beyond the one on screen
+    // make levels up to AHEAD beyond the zoom
     function build(ms) {
-      if (L.length > Math.max(0, Math.floor(s)) + AHEAD) return;
+      if (L.length - 1 >= Math.floor(s) + AHEAD) return;
       const prev = L[L.length - 1];
       if (useWorker) {
         if (busy) { if (performance.now() - sent > 30000) dropWorker(true); return; }
         if (!worker) startWorker();
-        if (worker) { busy = true; sent = performance.now(); worker.postMessage({ id: ++job, G, seed, sweeps: Z0.sweeps, pic: prev.pic, fx: prev.focus[0], fy: prev.focus[1] }); return; }
+        if (worker) { busy = true; sent = performance.now(); worker.postMessage({ id: ++job, G, seed, opts, pic: prev.pic, fx: prev.focus[0], fy: prev.focus[1] }); return; }
       }
-      if (building < 0) { if (!R) R = Refiner(G, seed, { sweeps: Z0.sweeps }); R.start(prev.pic, prev.focus[0], prev.focus[1]); building = L.length; }
+      if (building < 0) { if (!R) R = Refiner(G, seed, opts); R.start(prev.pic, prev.focus[0], prev.focus[1]); building = L.length; }
       if (R.step(ms)) { building = -1; add(R.result()); }
     }
-    // where the camera is, in the coordinates of level A, at fraction f of the way to the next level:
-    // it closes on the focus so that the focus drifts to the middle of the screen at a steady pace
-    function camera(A, f) {
-      const w = f <= A.f0 ? 1 : ((1 - f) * Math.pow(2, -f)) / ((1 - A.f0) * Math.pow(2, -A.f0));
-      return [A.focus[0] + 0.5 + (A.from[0] - A.focus[0] - 0.5) * w, A.focus[1] + 0.5 + (A.from[1] - A.focus[1] - 0.5) * w];
+    // a point given in the cells of level a, in the cells of level b
+    function conv(p, a, b) {
+      let x = p[0], y = p[1];
+      for (; a < b; a++) { x = 2 * (x - L[a].focus[0]) + C; y = 2 * (y - L[a].focus[1]) + C; }
+      for (; a > b; a--) { x = L[a - 1].focus[0] + (x - C) / 2; y = L[a - 1].focus[1] + (y - C) / 2; }
+      return [x, y];
     }
-    // head for the cell nearest a point on screen: the level on screen (or the one fading in) gets
-    // a new focus and everything finer is thrown away
-    function steer(px, py) {
-      const dpr = size(), V = cv.width, k = Math.max(0, Math.floor(s)), f = Math.max(0, s - k), A = L[k]; if (!A) return;
-      const [camx, camy] = camera(A, f), p = P0 * dpr * Math.pow(2, s - k);
-      let x = camx + (px * dpr - V / 2) / p, y = camy + (py * dpr - V / 2) / p, j = k, lv = A;
-      if (f > OUT[0] && L[k + 1]) { x = (x - A.focus[0]) * 2 + G / 2; y = (y - A.focus[1]) * 2 + G / 2; j = k + 1; lv = L[j]; }
-      const lim = LIMIT - 4, c = G >> 1, hit = nearestCell(lv.pic, G, Math.round(x), Math.round(y), 120);
-      if (!hit || Math.abs(hit[0] - c) > lim || Math.abs(hit[1] - c) > lim) return;
-      if (j === k) { lv.from = [camx, camy]; lv.f0 = Math.min(f, 0.95); }
-      lv.focus = hit;
-      for (let i = j + 1; i < L.length; i++) if (L[i]) L[i].cv.width = 0;
-      L.length = j + 1; building = -1; if (busy) dropWorker(false);
-      if (!running) draw();
+    // keep the camera in the cells of the level the zoom has reached (or the finest there is)
+    function rebase() {
+      const k = Math.max(L.findIndex(v => v), Math.min(Math.floor(Math.max(0, s)), L.length - 1));
+      if (k !== kref) { cam = conv(cam, kref, k); kref = k; }
     }
+    // where the zoom is heading: the middle of the finest level's chosen cell
+    function target() { const D = L.length - 1, f = L[D].focus; return conv([f[0] + 0.5, f[1] + 0.5], D, kref); }
     const smooth = (x, a, b) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     function size() {
       const dpr = Math.min(2, window.devicePixelRatio || 1), w = Math.round(cv.clientWidth * dpr);
       if (cv.width !== w) { cv.width = cv.height = w; }
       return dpr;
     }
+    const px = j => P0 * Math.pow(2, s - j);                                  // CSS px per cell of level j
+    function nest() {                                                          // the levels to draw, finest first
+      rebase(); const out = [], now = performance.now();
+      for (let j = L.length - 1; j >= Math.max(0, kref - 1) && out.length < MAXDRAW; j--) {
+        if (!L[j]) break;
+        const p = px(j), a = (j === 0 ? 1 : smooth(p, 0.8 * PMIN, PMIN)) * Math.min(1, (now - L[j].born) / 500);
+        if (a > 0) out.push({ j, p, a, c: conv(cam, kref, j) });
+      }
+      return out;
+    }
     function draw() {
-      const dpr = size(), V = cv.width, k = Math.max(0, Math.floor(s)), f = Math.max(0, s - k), A = L[k];
-      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, V, V); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-      if (!A) return;
-      const c = G / 2, [camx, camy] = camera(A, f), p = P0 * dpr * Math.pow(2, s - k);
-      const put = (lv, x, y, q, alpha) => { if (alpha <= 0) return; ctx.globalAlpha = alpha; ctx.drawImage(lv.cv, V / 2 - x * q, V / 2 - y * q, G * q, G * q); };
-      const B = L[k + 1];
-      ctx.globalCompositeOperation = 'lighter';                  // a true cross-fade: where the two levels agree nothing changes
-      put(A, camx, camy, p, 1 - (B ? smooth(f, OUT[0], OUT[1]) : 0));
-      if (B) put(B, (camx - A.focus[0]) * 2 + c, (camy - A.focus[1]) * 2 + c, p / 2, smooth(f, IN[0], IN[1]));
-      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-      const mag = Math.pow(2, Math.max(0, s)), cells = Z0.n * Math.pow(Z0.growth, Math.max(0, s));
+      const dpr = size(), V = cv.width, N = nest();
+      if (gl) {
+        const lv = new Float32Array(4 * MAXDRAW), meta = new Float32Array(4 * MAXDRAW), bg = hex('--plate', '0D0F16'), ink = hex('--plate-ink', 'E9EBF2'), lin = c => c.map(v => Math.pow(v / 255, 2.2));
+        N.forEach((e, i) => { lv.set([e.c[0], e.c[1], 1 / (e.p * dpr), e.a], 4 * i); meta.set([e.j % LAYERS, Math.min(3, Z0.gain * Math.pow(e.p, -DIM)), L[e.j].taper, 0], 4 * i); });
+        gl.viewport(0, 0, V, V); gl.uniform4fv(U.u_lv, lv); gl.uniform4fv(U.u_meta, meta); gl.uniform1i(U.u_n, N.length); gl.uniform2f(U.u_res, V, V);
+        gl.uniform3fv(U.u_bg, lin(bg)); gl.uniform3fv(U.u_ink, lin(ink)); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      } else {
+        ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, V, V); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        for (let i = N.length - 1; i >= 0; i--) {                                // coarsest first; a finer level replaces what is under its window
+          const e = N[i], q = e.p * dpr, x = V / 2 - e.c[0] * q, y = V / 2 - e.c[1] * q;
+          if (i < N.length - 1) ctx.clearRect(x + q, y + q, (G - 2) * q, (G - 2) * q);
+          ctx.globalAlpha = e.a; ctx.drawImage(L[e.j].cv, x, y, G * q, G * q);
+        }
+        ctx.globalAlpha = 1;
+      }
+      const mag = Math.pow(2, Math.max(0, s - s0)), cells = Z0.n * Math.pow(Z0.growth, Math.max(0, s - s0));
       const big = v => v < 1e6 ? fmtNum(+v.toPrecision(2)) : (v / Math.pow(10, Math.floor(Math.log10(v)))).toFixed(1) + '×10' + sup(Math.floor(Math.log10(v)));
-      $('zoom-readout').innerHTML = s <= 0 ? 'the whole shape: <b>' + fmtNum(Z0.n) + '</b> cells' :
+      $('zoom-readout').innerHTML = s <= s0 ? 'the whole shape: <b>' + fmtNum(Z0.n) + '</b> cells' :
         'magnified <b>' + big(mag) + '×</b> · at this resolution the whole shape would have about <b>' + big(cells) + '</b> cells';
     }
     const sup = n => String(n).split('').map(ch => '⁰¹²³⁴⁵⁶⁷⁸⁹'[+ch]).join('');
+    // head for the cell nearest a point on screen: the finest level that can be re-centred there
+    // gets a new focus, and everything finer is thrown away and made again
+    function steer(x, y) {
+      rebase(); const V = cv.clientWidth;
+      for (let j = L.length - 1; j >= kref; j--) {
+        const p = px(j), c = conv(cam, kref, j); let u = c[0] + (x - V / 2) / p, v = c[1] + (y - V / 2) / p;
+        if (j > kref && Math.max(Math.abs(u - C), Math.abs(v - C)) > LIMIT) continue;
+        u = Math.min(C + LIMIT, Math.max(C - LIMIT, u)); v = Math.min(C + LIMIT, Math.max(C - LIMIT, v));
+        const hit = nearestCell(L[j].pic, G, Math.round(u), Math.round(v), Math.min(400, Math.ceil(40 / p)));
+        if (!hit || Math.max(Math.abs(hit[0] - C), Math.abs(hit[1] - C)) > LIMIT) continue;
+        L[j].focus = hit; forget(j + 1); if (!running) draw();
+        return;
+      }
+    }
     function frame(t) {
       const dt = Math.min(0.1, (t - last) / 1000); last = t;
-      s = Math.min(s + Math.pow(10, +$('zoom-speed').value) * dt, L.length - 1 + IN[0]);     // wait at the fade-in point for a level not made yet
-      for (let k = 0; k < Math.floor(s) - 1; k++) if (L[k]) { L[k].cv.width = 0; L[k] = null; }  // forget what is behind
+      // full speed while levels are well ahead of the zoom, slowing to a stop if they fall behind
+      const lead = L.length - 1 - s;
+      s += Math.pow(10, +$('zoom-speed').value) * dt * Math.min(1, Math.max(0, (lead - 0.4) / 1.2));
+      rebase(); const T = target(), w = 1 - Math.exp(-dt / 0.9); cam = [cam[0] + (T[0] - cam[0]) * w, cam[1] + (T[1] - cam[1]) * w];
+      for (let k = 0; k < kref - 1; k++) if (L[k]) { if (L[k].cv) L[k].cv.width = 0; L[k] = null; }          // forget what is behind
       build(7); draw();
       if (running) raf = requestAnimationFrame(frame);
     }
@@ -163,10 +246,10 @@
     reset();
     const still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
     new IntersectionObserver(es => {
-      visible = es[0].isIntersecting;
+      const visible = es[0].isIntersecting;
       if (!visible && running) setRunning(false); else if (visible && !running && !userPaused && !still) setRunning(true);
     }, { threshold: 0.3 }).observe($('zoomer'));
-    window.__zoom = { get s() { return s; }, set s(v) { s = v; }, get levels() { return L.length; }, get worker() { return useWorker && !!worker; }, G, draw, build, setRunning };
+    window.__zoom = { get s() { return s; }, set s(v) { s = v; }, get levels() { return L.length; }, get worker() { return useWorker && !!worker; }, G, gl: !!gl, draw, build, setRunning };
   })();
 
   // ---------------------------------------------------------------- live race
