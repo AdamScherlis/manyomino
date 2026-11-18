@@ -1,10 +1,10 @@
 // The browser's zoom engine (page/zoom.js) run many levels deep under node: does anything drift?
 // At each level: per-cell statistics of the picture, and the growth of the cell count in the
 // region that is kept.  Writes analysis/zoom_deep.json.
-//   node analysis/zoom_deep.js [LEVELS=400] [SWEEPS=32] [SEED=7]
+//   node analysis/zoom_deep.js [LEVELS=400] [SWEEPS=32] [SEED=7] [G=1536]
 const fs = require('fs'), path = require('path'); const { Refiner, nearestCell } = require(path.join(__dirname, '..', 'page', 'zoom.js'));
-const G = 768, LEVELS = +process.argv[2] || 400, T = +process.argv[3] || 32, seed = +process.argv[4] || 7;
-const buf = fs.readFileSync(path.join(__dirname, '..', 'prod', 'ckpt_A_n4000.bin')); const a = new Int32Array(buf.buffer, buf.byteOffset, buf.length / 4); const n0 = a[0];
+const G = +process.argv[5] || 1536, LEVELS = +process.argv[2] || 400, T = +process.argv[3] || 32, seed = +process.argv[4] || 7;
+const buf = fs.readFileSync(path.join(__dirname, '..', 'prod', 'snap_A_n16000_p0_0001.bin')); const a = new Int32Array(buf.buffer, buf.byteOffset, buf.length / 4); const n0 = a[0];
 let xmin = 1e9, xmax = -1e9, ymin = 1e9, ymax = -1e9;
 for (let i = 0; i < n0; i++) { xmin = Math.min(xmin, a[1 + 2 * i]); xmax = Math.max(xmax, a[1 + 2 * i]); ymin = Math.min(ymin, a[2 + 2 * i]); ymax = Math.max(ymax, a[2 + 2 * i]); }
 let pic = new Uint8Array(G * G); const ox = (G - (xmax - xmin + 1)) >> 1, oy = (G - (ymax - ymin + 1)) >> 1;
@@ -19,7 +19,7 @@ function stats(pic, lo, hi) {           // cells with lo <= x,y < hi
   return { n, per: per / n, sq: sq / n, d1: d1 / n, d3: d3 / n, st: st / n };
 }
 const R = Refiner(G, seed, { sweeps: T });
-let f = nearestCell(pic, G, G >> 1, G >> 1, 200); let tot = { per: 0, sq: 0, d1: 0, d3: 0, st: 0, w: 0 }, ratios = [];
+let f = nearestCell(pic, G, G >> 1, G >> 1, 300); let tot = { per: 0, sq: 0, d1: 0, d3: 0, st: 0, w: 0 }, ratios = [];
 const t0 = Date.now(); let moves = 0; const rows = [];
 for (let k = 1; k <= LEVELS; k++) {
   // cells of the coarse picture in the square of side G/4 about the focus, which becomes the middle half of the next
@@ -30,7 +30,7 @@ for (let k = 1; k <= LEVELS; k++) {
   ratios.push([nc, nf]); rows.push([k, st.n, st.per, st.sq, st.d1, st.d3, st.st, nf / nc]);
   if (k <= 3 || k % 50 === 0) console.log(`level ${k}: ${st.n} cells in view (movable ${nstart} -> ${R.n}); perim ${st.per.toFixed(4)} squares ${st.sq.toFixed(4)} deg1 ${st.d1.toFixed(4)} deg3 ${st.d3.toFixed(4)} straight ${st.st.toFixed(4)}; growth ${(nf / nc).toFixed(3)}`);
   if (k > 1) { for (const key of ['per', 'sq', 'd1', 'd3', 'st']) tot[key] += st[key] * st.n; tot.w += st.n; }
-  pic = fine; f = nearestCell(pic, G, G >> 1, G >> 1, 200);
+  pic = fine; f = nearestCell(pic, G, G >> 1, G >> 1, 300);
   if (!f) { console.log('lost the shape at level', k); break; }
 }
 const el = (Date.now() - t0) / 1000;

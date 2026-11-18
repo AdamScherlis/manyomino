@@ -398,10 +398,13 @@ capped at `-kmax`, default 256), so every move is local and the walk can be run 
 opened, doubling widens every loop, and with a cap of 64 four refinements in a row left the
 largest clump a third too large on average.
 
-`page/zoom.js` is the same walk in JavaScript on a 768×768 window around one point, which is
+`page/zoom.js` is the same walk in JavaScript on a 1,536×1,536 window around one point
+(1,024 on a narrow screen), run in a worker, which is
 what the page's endless zoom runs: each level is the middle of the previous one, doubled and
-relaxed, so the cost per level does not depend on depth. Its cap is 48 cells; a loop wider
-than that leaves the window within a few levels.
+relaxed, so the cost per level does not depend on depth (about a second). Cells are drawn
+at 0.75 to 1.5 pixels and the next level fades in at half that, so the hand-over between
+levels happens below the size at which single cells can be made out. Its cap is 48 cells;
+a loop wider than that leaves the window within a few levels.
 
 Three checks (`scripts/zoom_relax.sh`, `scripts/zoom_test.sh`; tables by
 `analysis/zoom_report.py`):

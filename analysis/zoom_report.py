@@ -15,7 +15,7 @@ def load(name):
     return json.load(open(fn)) if os.path.exists(fn) else None
 
 
-def first_shape(fn=os.path.join(ROOT, "prod", "ckpt_A_n4000.bin")):
+def first_shape(fn=os.path.join(ROOT, "prod", "snap_A_n16000_p0_0001.bin")):
     a = np.fromfile(fn, dtype="<i4"); n = int(a[0]); xy = a[1:1 + 2 * n].reshape(n, 2)
     x = xy[:, 0] - xy[:, 0].min(); y = xy[:, 1] - xy[:, 1].min(); w = int(x.max()) + 1; h = int(y.max()) + 1
     bits = np.zeros(w * h, np.uint8); bits[y * w + x] = 1
