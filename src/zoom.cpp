@@ -14,10 +14,12 @@
 // cells next to s) and add s with probability min(1, 4 z n / (n + 1)).  The other four propose
 // to remove c, accepted with probability min(1, n / (4 z (n - 1))), provided c has a movable
 // neighbour.  Both need a certificate: the cells next to the site must be connected to each
-// other, without the site, inside the box of radius K around it, where P(K >= r) = 1/r capped
-// at -kmax.  The certificate is the same for a move and its reverse, so the walk is reversible
-// with respect to z^n on connected shapes, and a removal can never disconnect.  (Loops wider
-// than the cap are never opened or closed.)
+// other, without the site, inside the box of radius K around it, where P(K >= r) = 1/r, capped
+// at -kmax (default 256).  The certificate is the same for a move and its reverse, so the walk is reversible
+// with respect to z^n on connected shapes, and a removal can never disconnect.  Loops wider
+// than the cap are never opened or closed, and doubling widens every loop, so too small a cap
+// lets wide loops pile up over repeated refinements: with 64, four refinements to a million
+// cells left the largest clump a third too large on average.
 //
 //   zoom -load F [-inflate 2] [-z Z] [-sweeps T] [-kmax K] [-seed S] [-out F2] [-log E]
 //        [-win x0 y0 x1 y1]     only cells with x0 <= x < x1, y0 <= y < y1 (after inflation) move
@@ -64,7 +66,7 @@ struct Zoom {
   std::vector<uint8_t> g;                    // bit 0: occupied; bits 1-3: search label + 1
   std::vector<int> cells;                    // grid index of every movable cell
   int wx0, wy0, wx1, wy1;                    // movable region, grid coordinates
-  double z = 1.0 / 4.0625696; int kmax = 64;
+  double z = 1.0 / 4.0625696; int kmax = 256;
   Rng rng{1};
   u64 nAdd = 0, nRem = 0, nCertFail = 0, work = 0;
   std::vector<int> q[4]; int par[4];
@@ -218,7 +220,7 @@ int main(int argc, char **argv) {
   std::vector<int> v = readShape(load); size_t n0 = v.size() / 2;
   long xmin = 1L << 40, ymin = 1L << 40, xmax = -(1L << 40), ymax = -(1L << 40);
   for (size_t i = 0; i < n0; i++) { xmin = std::min<long>(xmin, v[2 * i]); xmax = std::max<long>(xmax, v[2 * i]); ymin = std::min<long>(ymin, v[2 * i + 1]); ymax = std::max<long>(ymax, v[2 * i + 1]); }
-  int margin = haveWin ? 4 : 192 + Z.kmax;
+  int margin = haveWin ? 4 : 256;
   xmin *= inflate; ymin *= inflate; xmax = xmax * inflate + inflate - 1; ymax = ymax * inflate + inflate - 1;
   Z.ox = (int)xmin - margin; Z.oy = (int)ymin - margin; Z.W = (int)(xmax - xmin + 1 + 2 * margin); Z.H = (int)(ymax - ymin + 1 + 2 * margin);
   if ((double)Z.W * Z.H > 2.0e9) { fprintf(stderr, "grid too large\n"); return 1; }

@@ -65,7 +65,7 @@
       for (let i = 0; i < G * G; i++) if (pic[i]) d[i] = ink;
       x.putImageData(im, 0, 0); return c;
     }
-    function level(pic, focus) { return { pic, focus, cv: picture(pic) }; }
+    function level(pic, focus) { return { pic, focus, cv: picture(pic), from: [G / 2 + 1, G / 2 + 1], f0: 0 }; }   // the camera runs from `from` (at f0) to the focus (at 1)
     function reset() {
       ink = inkColour(); R = Refiner(G, seed, { sweeps: Z0.sweeps }); seed = (seed + 0x9E3779B9) >>> 0;
       // dive towards a randomly chosen cell of the first shape, not too near its edge
@@ -85,6 +85,25 @@
         for (let k = 0; k < L.length - AHEAD - 3; k++) L[k] = null;                              // forget what is far behind
       }
     }
+    // where the camera is, in the coordinates of level A, at fraction f of the way to the next level:
+    // it closes on the focus so that the focus drifts to the middle of the screen at a steady pace
+    function camera(A, f) {
+      const w = f <= A.f0 ? 1 : ((1 - f) * Math.pow(2, -f)) / ((1 - A.f0) * Math.pow(2, -A.f0));
+      return [A.focus[0] + 0.5 + (A.from[0] - A.focus[0] - 0.5) * w, A.focus[1] + 0.5 + (A.from[1] - A.focus[1] - 0.5) * w];
+    }
+    // head for the cell nearest a point on screen: the level on screen (or the one fading in) gets
+    // a new focus and everything finer is thrown away
+    function steer(px, py) {
+      const dpr = size(), V = cv.width, k = Math.max(0, Math.floor(s)), f = Math.max(0, s - k), A = L[k]; if (!A) return;
+      const [camx, camy] = camera(A, f), p = P0 * dpr * Math.pow(2, f);
+      let x = camx + (px * dpr - V / 2) / p, y = camy + (py * dpr - V / 2) / p, j = k, lv = A;
+      if (f > 0.5 && L[k + 1]) { x = (x - A.focus[0]) * 2 + G / 2; y = (y - A.focus[1]) * 2 + G / 2; j = k + 1; lv = L[j]; }
+      const lim = R.limit - 4, c = G >> 1, hit = nearestCell(lv.pic, G, Math.round(x), Math.round(y), 60);
+      if (!hit || Math.abs(hit[0] - c) > lim || Math.abs(hit[1] - c) > lim) return;
+      if (j === k) { lv.from = [camx, camy]; lv.f0 = Math.min(f, 0.95); }
+      lv.focus = hit; L.length = j + 1; building = -1;
+      if (!running) draw();
+    }
     const smooth = (x, a, b) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     function size() {
       const dpr = Math.min(2, window.devicePixelRatio || 1), w = Math.round(cv.clientWidth * dpr);
@@ -95,8 +114,7 @@
       const dpr = size(), V = cv.width, k = Math.max(0, Math.floor(s)), f = s - k, A = L[k];
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, V, V); ctx.imageSmoothingEnabled = false;
       if (!A) return;
-      const c = G / 2, e = f <= 0 ? 0 : 1 - (1 - f) * Math.pow(2, -f);
-      const camx = c + (A.focus[0] + 0.5 - c) * e, camy = c + (A.focus[1] + 0.5 - c) * e, p = P0 * dpr * Math.pow(2, f);
+      const c = G / 2, [camx, camy] = camera(A, f), p = P0 * dpr * Math.pow(2, f);
       const put = (lv, x, y, q, alpha) => { if (alpha <= 0) return; ctx.globalAlpha = alpha; ctx.drawImage(lv.cv, V / 2 - x * q, V / 2 - y * q, G * q, G * q); };
       const B = L[k + 1], fade = B ? smooth(f, 0.3, 0.65) : 0;
       put(A, camx, camy, p, 1 - (B ? smooth(f, 0.5, 0.9) : 0));
@@ -117,6 +135,7 @@
     function setRunning(r) { running = r; $('zoom-run').textContent = r ? 'Pause' : 'Zoom'; cancelAnimationFrame(raf); if (r) { last = performance.now(); raf = requestAnimationFrame(frame); } }
     $('zoom-run').addEventListener('click', () => { userPaused = running; setRunning(!running); });
     $('zoom-new').addEventListener('click', () => { reset(); if (!running && !userPaused) setRunning(true); });
+    cv.addEventListener('click', ev => { const r = cv.getBoundingClientRect(); steer(ev.clientX - r.left, ev.clientY - r.top); });
     new ResizeObserver(() => { if (!running) draw(); }).observe(cv);
     reset();
     const still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
