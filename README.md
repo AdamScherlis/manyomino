@@ -264,7 +264,11 @@ stand-in for one shape of 1,024,000 cells reproduces the million-cell reading (l
 relaxation time of 40 to 46 moves per cell is that of properties a typical shape has plenty
 of; above it sits a ladder of rare ring properties, taller the larger the shape. They carry
 almost no weight in the averages reported (a 4,000-cell shape holds a clump of 128 cells or
-more 0.3% of the time).
+more 0.3% of the time). Slow is not the same as wrong: the 26 saved shapes of 1,024,000 cells
+hold 1,295,251 clumps of 4 or more cells against 1,293,551 expected from the long records,
+and agree with them at every size up to 256 cells within counting error, except for 159
+clumps of 64 or more against 132 expected, 2.4 counting errors high
+(`analysis/clump_census.py`).
 
 `-relA 1` draws large boxes more often (`P(K ≥ r) = 1/r`). The clump counts are unchanged,
 the exhaustive test passes, and the ladder is gone: clumps of every size from 16 to 363
