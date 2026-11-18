@@ -87,7 +87,7 @@ def clump_report(hero=None):
                      "and a theorem of Peskun&rsquo;s from 1973 says that such a walk remembers no average longer than the original does, counted in moves. "
                      f"So the trunk is once again the slowest property found, an independent sample of anything reported here takes as many moves as before "
                      f"(and {cost}% more computer time), and the new rule is worth having because it removes the one known way for the walk to get slower with size. "
-                     "Every number on this page was produced with the original rule. The new one is an option in the code, not yet the default.</p>")
+                     "Every number on this page was produced with the original rule. The code now uses the new one unless told otherwise.</p>")
         T["CL_FIX"] = (
             "<h3>Drawing larger boxes</h3>"
             "<p>If the wait is for a large box, the remedy is to draw large boxes more often. Let the box reach r cells or more with probability 1/r in place of "
@@ -99,9 +99,13 @@ def clump_report(hero=None):
             '    <div id="ch-clump-fix"></div></div>\n</section>\n<section class="measure">'
             f"<p>The ladder goes away. With the new rule the count of clumps of at least 16 cells is forgotten in {Q[16][0]:.1f} moves per cell, and of at least "
             f"{top} cells in {Q[top][0]:.1f}, where the original took {P[16][0]:.0f} and {P[top][0]:.0f}. Large clumps no longer outlast small ones."
-            f"{direct}</p>" + trunk)
+            f"{direct}</p>"
+            f"<p>The size of the gain is what the change predicts. A box wide enough for a ring d cells across is now drawn d times as often, and the gain at each "
+            f"size is close to the width of the rings of that size: {P[128][0] / Q[128][0]:.0f}-fold at 128 cells, where rings are about 30 cells across, and "
+            f"{P[256][0] / Q[256][0]:.0f}-fold at 256 cells, where they are about 50. A long ring also offers more cells at which to break it, so once the "
+            f"boxes are no obstacle a large ring goes at least as fast as a small one.</p>" + trunk)
     T["CL_CHECK"] = (" The cause is known: large rings of cells, which the walk is slow to open, and which get larger and slower as the shape grows "
-                     "(<a href=\"#loops\">above</a>)." + (" A changed rule for the move removes the effect in tests but was not used for these results." if T["CL_FIX"] else ""))
+                     "(<a href=\"#loops\">above</a>)." + (" A changed rule for the move removes the effect, and is now the one the code uses, but it was not used for these results." if T["CL_FIX"] else ""))
     if hero and hero.get("blob"):
         T["CL_HERO_TAU"] = f"{hero['blob'][0]:.0f}"; T["CL_HERO_TAU_ERR"] = f"{hero['blob'][1]:.0f}"; T["CL_HERO_MEAN"] = f"{hero['blob_mean']:.0f}"
     return D, T
@@ -119,7 +123,7 @@ def clump_md():
     for n in sizes:
         for s, d, de in J["sizes"][n]["density"]:
             if de > 0: a = dens.setdefault(s, [0.0, 0.0]); a[0] += d / de ** 2; a[1] += 1 / de ** 2
-    md = ["| clump of at least | per cell | " + " | ".join(f"lasts, {int(n):,} cells" for n in sizes) + (" | lasts with `-relA 1` |" if A1 else " |"),
+    md = ["| clump of at least | per cell | " + " | ".join(f"lasts with `-relA 2`, {int(n):,} cells" for n in sizes) + (" | lasts with `-relA 1` |" if A1 else " |"),
           "|---:|---:|" + "---:|" * (len(sizes) + (1 if A1 else 0))]
     for s in (4, 8, 16, 32, 64, 128, 182, 256, 363):
         if s not in dens: continue
@@ -128,7 +132,7 @@ def clump_md():
         md.append(f"| {s} cells | {dens[s][0] / dens[s][1]:.3g} | " + " | ".join(row) + (f" | {Q[s][0]:.1f} ± {Q[s][1]:.1f} |" if s in Q else (" | |" if A1 else " |")))
     md += ["", "Times are integrated autocorrelation times, in moves per cell, of the number of clumps of at least that size "
            f"({', '.join(f'{J['sizes'][n]['samples']:,} samples at {int(n):,} cells' for n in sizes)}, one per move per cell; errors by leaving out blocks)."]
-    md += ["", "| cells | largest clump, mean | its time | with `-relA 1`: mean | time |", "|---:|---:|---:|---:|---:|"]
+    md += ["", "| cells | `-relA 2`: largest clump, mean | its time | `-relA 1`: mean | time |", "|---:|---:|---:|---:|---:|"]
     for n in sorted(set(sizes) | set(A1["sizes"] if A1 else []), key=int):
         a = J["sizes"].get(n, {}).get("max"); b = (A1 or {"sizes": {}})["sizes"].get(n, {}).get("max")
         f = lambda m: (f"{m['mean']:.1f} ± {m['err']:.1f} | {m['tau']:.1f} ± {m['tau_err']:.1f}" if m else " | ")
@@ -141,15 +145,15 @@ def clump_md():
         for x in syn:
             md.append(f"| {x['n']:,} | {x['K']} × {x['from']:,} | {x['mean']:.0f} ± {x['err']:.0f} | {x['tau']:.0f} ± {x['tau_err']:.0f} | {x['tau_lo']:.0f} to {x['tau_hi']:.0f} |")
     if A1 and A1.get("feat"):
-        md += ["", "Other observables with `-relA 1` against the default (`conv/` chains), moves per cell:", "",
-               "| observable | " + " | ".join(f"{int(n):,}: default | {int(n):,}: `-relA 1`" for n in sorted(A1["feat"], key=int)) + " |", "|---|" + "---:|---:|" * len(A1["feat"])]
+        md += ["", "Other observables with `-relA 1` against `-relA 2` (`conv/` chains), moves per cell:", "",
+               "| observable | " + " | ".join(f"{int(n):,}: `-relA 2` | {int(n):,}: `-relA 1`" for n in sorted(A1["feat"], key=int)) + " |", "|---|" + "---:|---:|" * len(A1["feat"])]
         for nm in ("trunk01", "trunk03", "trunk10", "perim", "rg2", "blob_max"):
             cells = []
             for n in sorted(A1["feat"], key=int):
                 q = next(r for r in A1["feat"][n]["rows"] if r["name"] == nm); cells.append(f"{q['base']:.1f} ± {q['base_err']:.1f} | {q['tau']:.1f} ± {q['err']:.1f}")
             md.append(f"| {nm} | " + " | ".join(cells) + " |")
         r = [(int(n), J["rate"][n], A1["rate"][n]) for n in sorted(A1.get("rate", {}), key=int) if n in J.get("rate", {})]
-        if r: md += ["", "Speed, million moves per second (default, `-relA 1`): " + "; ".join(f"{n:,} cells: {a:.2f}, {b:.2f}" for n, a, b in r) + "."]
+        if r: md += ["", "Speed, million moves per second (`-relA 2`, `-relA 1`): " + "; ".join(f"{n:,} cells: {a:.2f}, {b:.2f}" for n, a, b in r) + "."]
     return md
 
 

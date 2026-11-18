@@ -5,7 +5,9 @@
 # INIT is either "-shape rect" or "-load file -inflate 2" and is used for the first part only.
 OUT=$1; TAG=$2; N=$3; T=$4; SEED=$5; INIT=$6; EXTRA=$7
 BIN=${BIN:-$(dirname $0)/../manyomino}       # FEAT=1 also writes the full observable library (-feat) per part,
-                                             # BLOBS=1 the clump sizes (-blobs)
+                                             # BLOBS=1 the clump sizes (-blobs); RELA=2 runs the relocate
+                                             # move as in the published results (-relA 2)
+[ -n "${RELA:-}" ] && EXTRA="$EXTRA -relA $RELA"
 base=$OUT/ts_${TAG}_n${N}; ck=$OUT/ckpt_${TAG}_n${N}.bin
 while true; do
   done_s=0; parts=0

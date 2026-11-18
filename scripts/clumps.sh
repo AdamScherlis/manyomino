@@ -4,12 +4,12 @@
 # per cell how many clumps of at least each size the shape holds (-blobs).  analysis/clumps.py
 # turns that into the size distribution and the persistence time of clumps against their size.
 #   scripts/clumps.sh T [A]     T seconds per chain on four cores; A is the tail exponent of the
-#                               relocate move's connectivity radius (-relA; 2 is the default
-#                               kernel and writes to clump/, any other value to clump_aA/)
+#                               relocate move's connectivity radius (-relA; 2, the rule of the
+#                               published runs, writes to clump/, any other value to clump_aA/)
 # Resumable: run it again after an interruption.
 cd $(dirname $0)/..
 T=${1:-10800}; A=${2:-2}; OUT=clump; EX="-pcp 0.4"
-[ "$A" != 2 ] && { OUT=clump_a$A; EX="$EX -relA $A"; }
+EX="$EX -relA $A"; [ "$A" != 2 ] && OUT=clump_a$A
 mkdir -p $OUT
 [ -x manyomino ] || g++ -O3 -march=native -std=c++17 -o manyomino src/manyomino.cpp
 L() { setsid nohup "$@" > /dev/null 2>&1 & }

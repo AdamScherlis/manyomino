@@ -45,7 +45,7 @@ Useful options:
 | `-moves M`, `-tsec S` | stop after M proposed moves, or S seconds |
 | `-pcp P` | fraction of moves that are transplants (default 0.5; the production runs use 0.4) |
 | `-relK 0` | use the plain relocate kernel with an exact global connectivity test |
-| `-relA A` | relocate draws its radius with `P(K ≥ r) = r^-A` (default 2; see Loops below for 1) |
+| `-relA A` | relocate draws its radius with `P(K ≥ r) = r^-A` (default 1; every result below was produced with 2, see Loops) |
 | `-shape rect\|bar` | starting shape (a near-square block, or a 1×N bar) |
 | `-load F [-inflate k]` | start from a saved shape, optionally blown up k× |
 | `-every E`, `-out F` | write observables every E moves |
@@ -66,15 +66,16 @@ roughly the right overall shape; each rung is then run for many autocorrelation 
 ## The moves, precisely
 
 **Relocate.** Pick a cell `c`, a cell `u` and a direction `d` uniformly, and a radius `K`
-with `P(K ≥ r) = r⁻²`. Let `s = u + d` and `Q = P \ c`. If `s` is empty, continue with
+with `P(K ≥ r) = r⁻¹`. Let `s = u + d` and `Q = P \ c`. If `s` is empty, continue with
 probability `1/k`, where `k` is the number of neighbours of `s` in `Q`. Require that the
 neighbours of `c` in `Q` are connected to each other within the radius-`K` box around `c`,
 and likewise for `s`. Then move `c` to `s`. Given `K`, every valid pair `(c, s)` has
 probability `1/4n²` and the conditions are symmetric in `c` and `s`. The condition at `c`
 implies `Q` is connected. Most draws of `K` are small, so the test is cheap, but arbitrarily
 large `K` has positive probability, which is what makes the chain irreducible. `-relK 0` sets
-`K = ∞` always: the textbook kernel. `-relA A` changes the exponent 2 to `A`; the kernel is
-symmetric for any law of `K`.
+`K = ∞` always: the textbook kernel. `-relA A` makes the law `r^-A`; the kernel is
+symmetric for any law of `K`. Every result in this README was produced with `-relA 2`, the
+default until the study of loops below; `RELA=2` in front of any of the scripts runs them that way.
 
 **Transplant.** Pick a cell `c`, a direction `d`, a cell `c'` and one of the eight lattice
 symmetries `g`, all uniformly. Let `B` be the component of `P \ c` containing `c + d`. Require
@@ -101,6 +102,9 @@ Madras (J. Phys. A 25, 1992).
 * The optimized transplant and the reference implementation agree move for move.
 * `-revtest 1` replays the reverse of every accepted move and checks it is accepted and
   restores the shape: no failures in millions of moves at sizes from 60 to 64,000.
+* The `-mode exact` and `-revtest` checks were repeated when the default radius law changed
+  to `-relA 1` (9 cells: chi-square 9,868 for 9,909 degrees of freedom with both moves, 9,903
+  relocate alone; no reversal failures at 60, 4,000 and 64,000 cells).
 * Independent ladders from different seeds agree at every size.
 * Counting removable cells recovers Klarner's constant (below).
 * Samplers with no Markov chain agree with it on 60 observables: see
@@ -245,8 +249,8 @@ is about why.
 **Loops.** Large clumps are single thin rings: a clump of 200 cells is a loop one cell wide,
 about 43 cells across, with unit squares attached. Transplant cannot open a loop, and relocate
 lifts a cell `c` only if its neighbours are connected within the radius-`K` box, which for a
-cell on a ring means a box that takes in the whole ring. With `P(K ≥ r) = r⁻²` that is rare for
-a large ring, so large rings open and close slowly (their number is right, since closing is
+cell on a ring means a box that takes in the whole ring. With `P(K ≥ r) = r⁻²`, the rule all
+the results here were produced with, that is rare for a large ring, so large rings open and close slowly (their number is right, since closing is
 suppressed by the same factor). `scripts/clumps.sh` and `analysis/clumps.py` record, once per
 move per cell, how many clumps of at least each size the shape holds (`-blobs`), at 4,000,
 16,000 and 64,000 cells. Two things come out. The number of clumps of each size per cell is
@@ -263,20 +267,25 @@ almost no weight in the averages reported (a 4,000-cell shape holds a clump of 1
 more 0.3% of the time).
 
 `-relA 1` draws large boxes more often (`P(K ≥ r) = 1/r`). The clump counts are unchanged,
-the exhaustive test at 8 cells passes, and the ladder is gone: clumps of every size from 16
-to 363 cells are forgotten in under 2 moves per cell, and at 1,024,000 cells the largest
-clump in 1.1 ± 0.3 (two chains of about 200 moves per cell). The trunk is not helped (40 ± 2
-against 41 ± 4 at 16,000 cells; 62 ± 16 against 39 ± 4 at 64,000, on a run half as long).
-It cannot be hurt either: the connectivity test passes in a larger box whenever it passes in
-a smaller one, so the `-relA 1` kernel has every off-diagonal transition probability at least
-as large as the default's, and by Peskun's theorem (Biometrika 60, 1973) the asymptotic
-variance of every average is no larger per move, and the spectral gap no smaller. The cost
-is about 9% more time per move. Every result in this README was produced with the default,
-`-relA 2`.
+the exhaustive test passes, and the ladder is gone: clumps of every size from 16 to 363
+cells are forgotten in under 2 moves per cell, and at 1,024,000 cells the largest clump in
+1.1 ± 0.3 (two chains of about 200 moves per cell). The gain at each size is close to the
+width of the rings of that size (25-fold at 128 cells, where rings are about 30 cells
+across; 58-fold at 256, about 50 across), as it should be: a box wide enough for a ring `d`
+across is drawn `d` times as often. The trunk is not helped (40 ± 2 against 41 ± 4 at 16,000
+cells; 62 ± 16 against 39 ± 4 at 64,000, on a run half as long). It cannot be hurt either:
+the connectivity test passes in a larger box whenever it passes in a smaller one, so the
+`-relA 1` kernel has every off-diagonal transition probability at least as large as that of
+`-relA 2`, and by Peskun's theorem (Biometrika 60, 1973) the asymptotic variance of every
+average is no larger per move, and the spectral gap no smaller. The cost is about 9% more
+time per move at 4,000 and 16,000 cells, and less at larger sizes, where transplants take
+most of the time (searched cells per move rise by 7% at 64,000 cells and about 5% at
+1,024,000). `-relA 1` is the default from here on; every result in this README was produced
+with `-relA 2`.
 
 Clumps (`analysis/clumps.py`, `analysis/clump_report.py`): number per cell and autocorrelation time, in moves per cell, by clump size.
 
-| clump of at least | per cell | lasts, 4,000 cells | lasts, 16,000 cells | lasts, 64,000 cells | lasts with `-relA 1` |
+| clump of at least | per cell | lasts with `-relA 2`, 4,000 cells | lasts with `-relA 2`, 16,000 cells | lasts with `-relA 2`, 64,000 cells | lasts with `-relA 1` |
 |---:|---:|---:|---:|---:|---:|
 | 4 cells | 0.0486 | 4.4 ± 0.1 | 4.4 ± 0.0 | 4.4 ± 0.2 | 4.1 ± 0.0 |
 | 8 cells | 0.00663 | 3.4 ± 0.0 | 3.5 ± 0.1 | 3.1 ± 0.1 | 2.6 ± 0.0 |
@@ -290,7 +299,7 @@ Clumps (`analysis/clumps.py`, `analysis/clump_report.py`): number per cell and a
 
 Times are integrated autocorrelation times, in moves per cell, of the number of clumps of at least that size (2,381,877 samples at 4,000 cells, 755,268 samples at 16,000 cells, 50,564 samples at 64,000 cells, one per move per cell; errors by leaving out blocks).
 
-| cells | largest clump, mean | its time | with `-relA 1`: mean | time |
+| cells | `-relA 2`: largest clump, mean | its time | `-relA 1`: mean | time |
 |---:|---:|---:|---:|---:|
 | 4,000 | 25.5 ± 0.1 | 39.1 ± 5.8 | 25.3 ± 0.0 | 1.7 ± 0.0 |
 | 16,000 | 38.4 ± 0.2 | 40.9 ± 12.7 | 38.4 ± 0.2 | 1.6 ± 0.1 |
@@ -307,9 +316,9 @@ The largest clump of K independent stretches of a smaller record, taken together
 | 1,024,000 | 64 × 16,000 | 140 ± 8 | 76 ± 36 | 57 to 164 |
 | 4,096,000 | 256 × 16,000 | 221 ± 15 | 84 ± 36 | 48 to 127 |
 
-Other observables with `-relA 1` against the default (`conv/` chains), moves per cell:
+Other observables with `-relA 1` against `-relA 2` (`conv/` chains), moves per cell:
 
-| observable | 16,000: default | 16,000: `-relA 1` | 64,000: default | 64,000: `-relA 1` |
+| observable | 16,000: `-relA 2` | 16,000: `-relA 1` | 64,000: `-relA 2` | 64,000: `-relA 1` |
 |---|---:|---:|---:|---:|
 | trunk01 | 40.5 ± 3.8 | 40.0 ± 2.5 | 39.0 ± 4.3 | 61.6 ± 16.2 |
 | trunk03 | 34.7 ± 5.2 | 35.2 ± 1.3 | 31.7 ± 2.4 | 48.1 ± 14.8 |
@@ -318,7 +327,7 @@ Other observables with `-relA 1` against the default (`conv/` chains), moves per
 | rg2 | 14.7 ± 0.9 | 13.7 ± 0.2 | 13.3 ± 0.9 | 15.1 ± 1.5 |
 | blob_max | 27.7 ± 8.3 | 1.6 ± 0.1 | 30.3 ± 9.6 | 1.7 ± 0.1 |
 
-Speed, million moves per second (default, `-relA 1`): 4,000 cells: 0.88, 0.80; 16,000 cells: 0.56, 0.51.
+Speed, million moves per second (`-relA 2`, `-relA 1`): 4,000 cells: 0.88, 0.80; 16,000 cells: 0.56, 0.51.
 
 Relaxation time of the whole chain on small shapes, from the measured table of transition rates (`analysis/spectrum.py`), in moves per cell:
 

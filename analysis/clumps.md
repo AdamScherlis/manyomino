@@ -1,4 +1,4 @@
-| clump of at least | per cell | lasts, 4,000 cells | lasts, 16,000 cells | lasts, 64,000 cells | lasts with `-relA 1` |
+| clump of at least | per cell | lasts with `-relA 2`, 4,000 cells | lasts with `-relA 2`, 16,000 cells | lasts with `-relA 2`, 64,000 cells | lasts with `-relA 1` |
 |---:|---:|---:|---:|---:|---:|
 | 4 cells | 0.0486 | 4.4 ± 0.1 | 4.4 ± 0.0 | 4.4 ± 0.2 | 4.1 ± 0.0 |
 | 8 cells | 0.00663 | 3.4 ± 0.0 | 3.5 ± 0.1 | 3.1 ± 0.1 | 2.6 ± 0.0 |
@@ -12,7 +12,7 @@
 
 Times are integrated autocorrelation times, in moves per cell, of the number of clumps of at least that size (2,381,877 samples at 4,000 cells, 755,268 samples at 16,000 cells, 50,564 samples at 64,000 cells, one per move per cell; errors by leaving out blocks).
 
-| cells | largest clump, mean | its time | with `-relA 1`: mean | time |
+| cells | `-relA 2`: largest clump, mean | its time | `-relA 1`: mean | time |
 |---:|---:|---:|---:|---:|
 | 4,000 | 25.5 ± 0.1 | 39.1 ± 5.8 | 25.3 ± 0.0 | 1.7 ± 0.0 |
 | 16,000 | 38.4 ± 0.2 | 40.9 ± 12.7 | 38.4 ± 0.2 | 1.6 ± 0.1 |
@@ -29,9 +29,9 @@ The largest clump of K independent stretches of a smaller record, taken together
 | 1,024,000 | 64 × 16,000 | 140 ± 8 | 76 ± 36 | 57 to 164 |
 | 4,096,000 | 256 × 16,000 | 221 ± 15 | 84 ± 36 | 48 to 127 |
 
-Other observables with `-relA 1` against the default (`conv/` chains), moves per cell:
+Other observables with `-relA 1` against `-relA 2` (`conv/` chains), moves per cell:
 
-| observable | 16,000: default | 16,000: `-relA 1` | 64,000: default | 64,000: `-relA 1` |
+| observable | 16,000: `-relA 2` | 16,000: `-relA 1` | 64,000: `-relA 2` | 64,000: `-relA 1` |
 |---|---:|---:|---:|---:|
 | trunk01 | 40.5 ± 3.8 | 40.0 ± 2.5 | 39.0 ± 4.3 | 61.6 ± 16.2 |
 | trunk03 | 34.7 ± 5.2 | 35.2 ± 1.3 | 31.7 ± 2.4 | 48.1 ± 14.8 |
@@ -40,4 +40,4 @@ Other observables with `-relA 1` against the default (`conv/` chains), moves per
 | rg2 | 14.7 ± 0.9 | 13.7 ± 0.2 | 13.3 ± 0.9 | 15.1 ± 1.5 |
 | blob_max | 27.7 ± 8.3 | 1.6 ± 0.1 | 30.3 ± 9.6 | 1.7 ± 0.1 |
 
-Speed, million moves per second (default, `-relA 1`): 4,000 cells: 0.88, 0.80; 16,000 cells: 0.56, 0.51.
+Speed, million moves per second (`-relA 2`, `-relA 1`): 4,000 cells: 0.88, 0.80; 16,000 cells: 0.56, 0.51.

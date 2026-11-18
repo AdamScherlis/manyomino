@@ -95,7 +95,7 @@ struct Sampler {
   std::vector<u32> pend;            // stamp: cell is a pending collision
   std::vector<int> pendList;
   int relK = 1;                     // 1: random-radius relocate, 0: always exact
-  double relA = 2.0;                // the radius K of that test has P(K >= r) = r^-relA
+  double relA = 1.0;                // the radius K of that test has P(K >= r) = r^-relA (2 in the published runs)
   bool refCP = false;               // use the naive reference cut&paste
   Rng rng;
   double logq = 0.0;                // perimeter tilt: weight exp(logq * t)
@@ -294,7 +294,7 @@ struct Sampler {
     nRel++;
     int ic = rng.below(n), iu = rng.below(n), d = rng.below(4);
     int K = 1 << 30;
-    if (relK) { double u = rng.uni(); K = u < 1e-12 ? (1 << 30) : (int)std::min(1.0e9, relA == 2.0 ? 1.0 / std::sqrt(u) : std::pow(u, -1.0 / relA)); }
+    if (relK) { double u = rng.uni(); K = u < 1e-12 ? (1 << 30) : (int)std::min(1.0e9, relA == 1.0 ? 1.0 / u : relA == 2.0 ? 1.0 / std::sqrt(u) : std::pow(u, -1.0 / relA)); }
     if (iu == ic) return;
     int sx = X[iu] + DX[d], sy = Y[iu] + DY[d];
     int cx = X[ic], cy = Y[ic];
@@ -666,7 +666,7 @@ static double now() {
 int main(int argc, char **argv) {
   int n = 100, lgW = 0; u64 seed = 1; double pcp = 0.5, tsec = 0; u64 moves = 1000000, every = 0, burn = 0;
   std::string seedShape = "rect", out = "", mode = "run", load = "", snap = ""; double p = 0; u64 snapEvery = 0; int full = 1;
-  int smax = -1, relK = 1, refCP = 0, inflate = 1, revtest = 0; double ppv = 0, ckptSec = 120, relA = 2.0; std::string ckpt = "", feat = "", blobs = "";
+  int smax = -1, relK = 1, refCP = 0, inflate = 1, revtest = 0; double ppv = 0, ckptSec = 120, relA = 1.0; std::string ckpt = "", feat = "", blobs = "";
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     auto nxt = [&]() { return std::string(argv[++i]); };

@@ -6,7 +6,7 @@
 #                                   picks the chains, "A B D E" by default
 cd $(dirname $0)/..
 T=${1:-2700}; A=${2:-2}; OUT=clump; EX="-pcp 0.4"
-[ "$A" != 2 ] && { OUT=clump_a$A; EX="$EX -relA $A"; }
+EX="$EX -relA $A"; [ "$A" != 2 ] && OUT=clump_a$A
 mkdir -p $OUT
 [ -x manyomino ] || g++ -O3 -march=native -std=c++17 -o manyomino src/manyomino.cpp
 L() { setsid nohup "$@" > /dev/null 2>&1 & }

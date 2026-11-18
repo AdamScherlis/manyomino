@@ -36,7 +36,8 @@ In particular the relaxation time is n^(O(log n)).
    eigenvalues λ < 1, and each term is at most 1/(1−λ₂).) So every property of the shape, however
    contrived, is forgotten within n^(O(log n)) moves in this sense.
 2. *The sampler in this repository.* Its relocation move makes the same proposal, and accepts
-   it when connectivity can be certified within a random radius K with P(K ≥ r) = r⁻²; for
+   it when connectivity can be certified within a random radius K with P(K ≥ r) = r⁻² (the rule
+   of the published runs, `-relA 2`; the present default r⁻¹ only improves the factor below to n⁻¹); for
    K ≥ n the certificate is exact. So each transition of the chain above has probability at
    least n⁻² times as large in the sampler's relocation move. The sampler mixes that move with
    transplants, with weight w = 0.6 on relocation. Both kernels are reversible with respect to
