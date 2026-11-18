@@ -284,7 +284,9 @@ the connectivity test passes in a larger box whenever it passes in a smaller one
 average is no larger per move, and the spectral gap no smaller. The cost is about 9% more
 time per move at 4,000 and 16,000 cells, and less at larger sizes, where transplants take
 most of the time (searched cells per move rise by 7% at 64,000 cells and about 5% at
-1,024,000). `-relA 1` is the default from here on; every result in this README was produced
+1,024,000). The two rules must give the same averages, and do (`analysis/rela_means.py`): of
+the 60 observables, none differs by more than two standard errors at 16,000 cells (148,000
+readings against 69,000) and 2 do at 64,000 (43,000 against 43,000; the largest 2.5). `-relA 1` is the default from here on; every result in this README was produced
 with `-relA 2`.
 
 Clumps (`analysis/clumps.py`, `analysis/clump_report.py`): number per cell and autocorrelation time, in moves per cell, by clump size.
