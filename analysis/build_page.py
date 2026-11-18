@@ -66,6 +66,7 @@ def prep(fn):
 
 from conv_report import conv_report, guarantee_report
 from clump_report import clump_report
+from zoom_report import zoom_report
 
 
 def main():
@@ -221,6 +222,7 @@ def main():
         for k in ("HS_PARA", "HS_CHECK"):
             T[k] = T[k].replace("@NEFF@", f"{round(kept / hero_n / float(T['HS_BLOB_RAW']), -1):.0f}")
     CD, CLT = clump_report(D.get("hero_slow"))                # clump lifetimes (analysis/clumps.py)
+    ZD, ZT = zoom_report(); D.update(ZD); T.update(ZT)        # endless zoom (page/zoom.js)
     D.update(CD); T.update(CLT)
     T["HERO_MOVES_EXP"] = f"{math.log10(hero_row['moves']):.0f}"
     T["HERO_CHAINS"] = {2: "two", 3: "three", 4: "four", 5: "five"}.get(hero_row["chains"], str(hero_row["chains"]))
@@ -233,7 +235,7 @@ def main():
         for k in list(r):
             if isinstance(r[k], float): r[k] = float(f"{r[k]:.7g}")
     js = "const DATA = " + json.dumps(slim, separators=(",", ":")) + ";\n"
-    for f in ("charts.js", "viewer.js", "sampler.js", "app.js"):
+    for f in ("charts.js", "viewer.js", "sampler.js", "zoom.js", "app.js"):
         js += open(os.path.join(PAGE, f)).read() + "\n"
     cssText = open(os.path.join(PAGE, "page.css")).read()
     title = "Manyomino"

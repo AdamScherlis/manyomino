@@ -44,6 +44,89 @@
     });
   })();
 
+  // ---------------------------------------------------------------- endless zoom
+  // Levels are G x G pictures, each twice the resolution of the last and centred on a cell of
+  // it (page/zoom.js).  The camera sits at zoom s: level floor(s) is on screen at 2 to 4 px per
+  // cell, and the next one fades in over it at half that.
+  (function () {
+    const Z0 = DATA.zoom, cv = $('zoom-canvas'); if (!Z0 || !cv) return;
+    const G = 768, P0 = 2, AHEAD = 3, ctx = cv.getContext('2d');
+    const bin = atob(Z0.bits), base = new Uint8Array(G * G);
+    { const ox = (G - Z0.w) >> 1, oy = (G - Z0.h) >> 1;
+      for (let y = 0; y < Z0.h; y++) for (let x = 0; x < Z0.w; x++) { const i = y * Z0.w + x; if (bin.charCodeAt(i >> 3) >> (i & 7) & 1) base[(x + ox) + (y + oy) * G] = 1; } }
+    let seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0, R = null, L = [], building = -1, s = -0.75, running = false, userPaused = false, visible = false, raf = 0, last = 0, ink = 0;
+    function inkColour() {
+      const m = /#?([0-9a-f]{6})/i.exec(css('--plate-ink')) || [0, 'E9EBF2'], v = parseInt(m[1], 16);
+      return (255 << 24 | (v & 255) << 16 | (v >> 8 & 255) << 8 | v >> 16) >>> 0;              // ABGR
+    }
+    function picture(pic) {
+      const c = document.createElement('canvas'); c.width = c.height = G;
+      const x = c.getContext('2d'), im = x.createImageData(G, G), d = new Uint32Array(im.data.buffer);
+      for (let i = 0; i < G * G; i++) if (pic[i]) d[i] = ink;
+      x.putImageData(im, 0, 0); return c;
+    }
+    function level(pic, focus) { return { pic, focus, cv: picture(pic) }; }
+    function reset() {
+      ink = inkColour(); R = Refiner(G, seed, { sweeps: Z0.sweeps }); seed = (seed + 0x9E3779B9) >>> 0;
+      // dive towards a randomly chosen cell of the first shape, not too near its edge
+      const lim = R.limit - 8, c = G >> 1; let f = null;
+      for (let t = 0; t < 400 && !f; t++) { const x = c + ((Math.random() * 2 - 1) * lim | 0), y = c + ((Math.random() * 2 - 1) * lim | 0); if (base[x + y * G]) f = [x, y]; }
+      L = [level(base, f || nearestCell(base, G, c, c, lim))]; building = -1; s = -0.75; draw();
+    }
+    // make levels up to AHEAD beyond the one on screen, a few milliseconds at a time
+    function build(ms) {
+      const want = Math.max(0, Math.floor(s)) + AHEAD;
+      if (building < 0) {
+        if (L.length > want) return;
+        const prev = L[L.length - 1]; R.start(prev.pic, prev.focus[0], prev.focus[1]); building = L.length;
+      }
+      if (R.step(ms)) {
+        const pic = R.result(); L.push(level(pic, nearestCell(pic, G, G >> 1, G >> 1, 200) || [G >> 1, G >> 1])); building = -1;
+        for (let k = 0; k < L.length - AHEAD - 3; k++) L[k] = null;                              // forget what is far behind
+      }
+    }
+    const smooth = (x, a, b) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    function size() {
+      const dpr = Math.min(2, window.devicePixelRatio || 1), w = Math.round(cv.clientWidth * dpr);
+      if (cv.width !== w) { cv.width = cv.height = w; }
+      return dpr;
+    }
+    function draw() {
+      const dpr = size(), V = cv.width, k = Math.max(0, Math.floor(s)), f = s - k, A = L[k];
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, V, V); ctx.imageSmoothingEnabled = false;
+      if (!A) return;
+      const c = G / 2, e = f <= 0 ? 0 : 1 - (1 - f) * Math.pow(2, -f);
+      const camx = c + (A.focus[0] + 0.5 - c) * e, camy = c + (A.focus[1] + 0.5 - c) * e, p = P0 * dpr * Math.pow(2, f);
+      const put = (lv, x, y, q, alpha) => { if (alpha <= 0) return; ctx.globalAlpha = alpha; ctx.drawImage(lv.cv, V / 2 - x * q, V / 2 - y * q, G * q, G * q); };
+      const B = L[k + 1], fade = B ? smooth(f, 0.3, 0.65) : 0;
+      put(A, camx, camy, p, 1 - (B ? smooth(f, 0.5, 0.9) : 0));
+      if (B) put(B, (camx - A.focus[0]) * 2 + c, (camy - A.focus[1]) * 2 + c, p / 2, fade);
+      ctx.globalAlpha = 1;
+      const mag = Math.pow(2, Math.max(0, s)), cells = Z0.n * Math.pow(Z0.growth, Math.max(0, s));
+      const big = v => v < 1e6 ? fmtNum(+v.toPrecision(2)) : (v / Math.pow(10, Math.floor(Math.log10(v)))).toFixed(1) + '\u00d710' + sup(Math.floor(Math.log10(v)));
+      $('zoom-readout').innerHTML = s <= 0 ? 'the whole shape: <b>' + fmtNum(Z0.n) + '</b> cells' :
+        'magnified <b>' + big(mag) + '\u00d7</b> \u00b7 at this resolution the whole shape would have about <b>' + big(cells) + '</b> cells';
+    }
+    const sup = n => String(n).split('').map(ch => '⁰¹²³⁴⁵⁶⁷⁸⁹'[+ch]).join('');
+    function frame(t) {
+      const dt = Math.min(0.1, (t - last) / 1000); last = t;
+      s = Math.min(s + Math.pow(10, +$('zoom-speed').value) * dt, L.length - 1 + 0.3);    // wait at the fade-in point for a level not made yet
+      build(7); draw();
+      if (running) raf = requestAnimationFrame(frame);
+    }
+    function setRunning(r) { running = r; $('zoom-run').textContent = r ? 'Pause' : 'Zoom'; cancelAnimationFrame(raf); if (r) { last = performance.now(); raf = requestAnimationFrame(frame); } }
+    $('zoom-run').addEventListener('click', () => { userPaused = running; setRunning(!running); });
+    $('zoom-new').addEventListener('click', () => { reset(); if (!running && !userPaused) setRunning(true); });
+    new ResizeObserver(() => { if (!running) draw(); }).observe(cv);
+    reset();
+    const still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    new IntersectionObserver(es => {
+      visible = es[0].isIntersecting;
+      if (!visible && running) setRunning(false); else if (visible && !running && !userPaused && !still) setRunning(true);
+    }, { threshold: 0.3 }).observe($('zoomer'));
+    window.__zoom = { get s() { return s; }, set s(v) { s = v; }, get levels() { return L.length; }, draw, build, setRunning };
+  })();
+
   // ---------------------------------------------------------------- live race
   (function () {
     const N = DATA.demo.n, lanes = [];
@@ -239,6 +322,23 @@
         aria: 'Autocorrelation time of the number of clumps of at least a given size, for the walk as used and with larger boxes drawn more often',
         series: [{ name: 'the walk as used', color: S1, r: 3, pts: K.pooled, line: K.pooled.map(p => [p[0], p[1]]) },
                  { name: 'large boxes drawn more often', color: S2, r: 3, pts: K.fix, line: K.fix.map(p => [p[0], p[1]]) }],
+      });
+    })();
+    if ($('ch-zoom-mass') && DATA.zoom && DATA.zoom.mass) (function () {
+      const Z = DATA.zoom, ramp = ['color-mix(in srgb, var(--s1) 60%, var(--panel))', S1];
+      chart($('ch-zoom-mass'), {
+        xlog: true, xlabel: 'rounds of the walk', ylabel: 'cells ÷ original', xname: 'rounds', yname: 'cells ÷ original', ysig: 5, height: 320, ydomain: [2.9, 3.3],
+        aria: 'Number of cells in a doubled shape relative to the original, against rounds of the local walk; it falls from 4 and settles near 2.95',
+        bands: [{ y0: Z.pred[0] - Z.pred[1], y1: Z.pred[0] + Z.pred[1], color: S3, label: '2 to the power 1/ν', labelAt: Z.pred[0] + Z.pred[1] }],
+        series: Z.mass.map((m, i) => ({ name: m.name, color: ramp[i % 2], r: 3, pts: m.pts, line: m.pts.map(p => [p[0], p[1]]) })),
+      });
+      if ($('ch-zoom-z') && Z.test) chart($('ch-zoom-z'), {
+        xlog: true, xlabel: 'rounds per level', ylabel: 'standard errors from sampled', xname: 'rounds per level', yname: 'standard errors', ysig: 3, height: 320, noTable: true,
+        xdomain: [Math.min(...Z.test.map(t => t.T)) / 1.6, Math.max(...Z.test.map(t => t.T)) * 1.6], ydomain: [-6, 6],
+        aria: 'Sixty measurements of shapes refined four times, as differences from sampled shapes in standard errors, for several numbers of rounds per level',
+        bands: [{ y0: -2, y1: 2, color: S3, label: 'within two', labelAt: 2 }],
+        series: [{ name: 'the shape at large (48 measurements)', color: S1, r: 2.6, pts: [].concat(...Z.test.map(t => t.rest.map((z, i) => [t.T * Math.pow(1.22, (i % 9 - 4) / 4), z]))) },
+                 { name: 'counts of small features per cell (12)', color: S2, r: 2.6, pts: [].concat(...Z.test.map(t => t.local.map((z, i) => [t.T * Math.pow(1.22, (i % 5 - 2) / 2), z]))) }],
       });
     })();
     if ($('ch-fossil') && DATA.fossil) (function () {

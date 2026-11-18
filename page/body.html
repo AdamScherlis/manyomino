@@ -259,6 +259,56 @@
     <div id="ch-lam"></div></div>
 </section>
 
+<hr class="keyline">
+
+<section class="measure" id="zoom">
+  <h2>Zooming in without end</h2>
+  <p class="kicker">Finer detail, made on the spot, for as long as you care to watch.</p>
+  <p>The picture at the top of this page stops at single squares. The exponent just measured
+  says what should lie beyond them if it did not: a piece of a large random polyomino, seen
+  from far enough away that the squares blur, looks like a piece of a smaller one. So a
+  polyomino can be given finer detail the way a coastline can. Replace each square by a patch
+  of smaller squares, in whatever arrangement a larger random polyomino would have had there.
+  Then do it again.</p>
+</section>
+
+<section>
+  <figure style="margin-top:0">
+    <div class="plate zoomer" id="zoomer">
+      <canvas id="zoom-canvas" aria-label="An endless zoom into a random polyomino, refined in the browser as it goes"></canvas>
+    </div>
+    <p class="zstat" id="zoom-readout">&nbsp;</p>
+    <div class="controls">
+      <button class="btn primary" id="zoom-run">Zoom</button>
+      <button class="btn" id="zoom-new">Start over somewhere else</button>
+      <label for="zoom-speed">Speed <input type="range" id="zoom-speed" min="-1.3" max="0.1" step="0.05" value="-0.5"></label>
+    </div>
+    <figcaption>The first frame is a uniformly random polyomino of {{ZM_N0}} cells, sampled like
+    everything else here. From then on, each time the view has doubled, the part in view is
+    redrawn at twice the resolution by the procedure below, in your browser, with fresh random
+    numbers. It does not repeat and it has no bottom.</figcaption>
+  </figure>
+</section>
+
+<section class="measure">
+  <p>The procedure has two steps. Double the picture, so that every square becomes a block of
+  four. Then run a walk that adds and removes single squares, anywhere on the shape, as long
+  as it stays in one piece, for {{ZM_T}} rounds. An added square is kept with probability
+  about 1/&lambda;, the reciprocal of Klarner&rsquo;s constant from the last section.</p>
+  <p>That number is not a tuning choice. Take a small region of a very large uniformly random
+  polyomino and ask how it may be filled in, given its surroundings. Every filling that keeps
+  the shape connected is allowed. One with an extra square needs the rest of the shape to
+  give a square up, and a shape with one square fewer has 1/&lambda; times as many
+  arrangements, because &lambda; is the rate at which the count of polyominoes grows with
+  size. So each extra square in the region costs a factor 1/&lambda;, and a walk that adds
+  and removes squares at that price is the rule for how a piece of a huge random polyomino
+  fluctuates. Run for a short time on a doubled shape, it rebuilds the detail up to a few
+  squares across, where doubling made everything too fat and too square, and has little time
+  to disturb anything larger. That is an argument, not a proof. The evidence is in three
+  checks.</p>
+  {{ZM_RESULTS}}
+</section>
+
 <section class="measure" id="doubt">
   <h2>Could the samples still be subtly wrong?</h2>
   <p>Everything above assumes that by the time a shape is recorded, the walk has forgotten where

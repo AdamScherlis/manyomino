@@ -377,6 +377,79 @@ sampler's own count estimate fails from about 1,000 cells at these population si
 slow mode outside the span of the 60 observables would not be seen, as the ring
 properties above were not until `blob_max` was timed at 1,024,000 cells.
 
+## Endless zoom
+
+`src/zoom.cpp` refines a polyomino to twice the resolution: every cell becomes a 2×2 block, and
+the result is relaxed for a set number of sweeps by a walk that adds and removes single cells,
+with the number of cells free and weight `z = 1/λ` per cell. The reason for that weight is
+the usual one for a small part of a large system. In a uniformly random polyomino of `N`
+cells, a region can gain a cell only if the rest of the shape gives one up, and the rest has
+`A(N−1)/A(N) → 1/λ` times as many arrangements with one cell fewer. So, given its
+surroundings, the fillings of a region that keep the whole connected are weighted by
+`λ^(−cells inside)`. That is a heuristic, not a theorem; the tests below are the evidence.
+The walk is reversible with respect to `z^n` on connected shapes (`-mode exact` checks this
+over every shape of up to 8 cells), so on a doubled shape it rebuilds the fine detail and,
+run briefly, leaves larger structure alone.
+Connectivity is certified inside a box of random radius, as in relocate, so every move is
+local and the walk can be run on a window (`-win`) with the surroundings held fixed.
+
+`page/zoom.js` is the same walk in JavaScript on a 768×768 window around one point, which is
+what the page's endless zoom runs: each level is the middle of the previous one, doubled and
+relaxed, so the cost per level does not depend on depth.
+
+Three checks (`scripts/zoom_relax.sh`, `scripts/zoom_test.sh`; tables by
+`analysis/zoom_report.py`):
+
+<!-- zoom tables -->
+| sweeps | cells ÷ original, 16,000 doubled | cells ÷ original, 64,000 doubled | all measurements pooled | 2×2 blocks | perimeter | tips | branchings | boxes changed: 2 | 8 | 32 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 3.2727 ± 0.0023 | 3.2719 ± 0.0008 | 3.2720 ± 0.0008 | 2.325 ± 0.005 | 0.882 ± 0.000 | 0.834 ± 0.001 | 1.356 ± 0.002 | 13% | 3% | 1% |
+| 2 | 3.1076 ± 0.0024 | 3.1087 ± 0.0010 | 3.1085 ± 0.0009 | 1.392 ± 0.004 | 0.952 ± 0.000 | 0.999 ± 0.001 | 1.127 ± 0.001 | 18% | 4% | 1% |
+| 4 | 3.0201 ± 0.0020 | 3.0190 ± 0.0014 | 3.0194 ± 0.0012 | 1.063 ± 0.003 | 0.989 ± 0.000 | 1.025 ± 0.001 | 1.031 ± 0.001 | 24% | 5% | 1% |
+| 8 | 2.9806 ± 0.0035 | 2.9811 ± 0.0018 | 2.9810 ± 0.0016 | 1.004 ± 0.003 | 0.998 ± 0.000 | 1.015 ± 0.001 | 1.006 ± 0.002 | 29% | 6% | 2% |
+| 16 | 2.9625 ± 0.0064 | 2.9618 ± 0.0026 | 2.9605 ± 0.0005 | 0.997 ± 0.003 | 1.001 ± 0.000 | 1.006 ± 0.001 | 1.001 ± 0.001 | 36% | 8% | 2% |
+| 32 | 2.9568 ± 0.0047 | 2.9515 ± 0.0031 | 2.9523 ± 0.0006 | 0.993 ± 0.004 | 1.001 ± 0.000 | 1.002 ± 0.001 | 0.999 ± 0.001 | 43% | 10% | 3% |
+| 64 | 2.9423 ± 0.0057 | 2.9436 ± 0.0047 | 2.9476 ± 0.0009 | 0.995 ± 0.003 | 1.000 ± 0.001 | 1.000 ± 0.001 | 0.999 ± 0.001 | 52% | 12% | 3% |
+| 128 | 2.9464 ± 0.0095 | 2.9389 ± 0.0054 | 2.9407 ± 0.0047 | 0.997 ± 0.003 | 1.000 ± 0.000 | 1.001 ± 0.001 | 1.000 ± 0.002 | 61% | 15% | 4% |
+| 256 | 2.9353 ± 0.0098 | 2.9426 ± 0.0045 | 2.9413 ± 0.0041 | 1.001 ± 0.003 | 1.000 ± 0.000 | 0.999 ± 0.001 | 0.999 ± 0.001 | 72% | 19% | 5% |
+| 512 | 2.9319 ± 0.0097 | 2.9453 ± 0.0064 | 2.9412 ± 0.0053 | 1.001 ± 0.003 | 1.000 ± 0.000 | 0.998 ± 0.001 | 0.998 ± 0.001 | 85% | 24% | 7% |
+| 1024 | 2.9263 ± 0.0209 | 2.9411 ± 0.0063 | 2.9399 ± 0.0060 | 0.997 ± 0.003 | 1.000 ± 0.000 | 0.999 ± 0.001 | 0.999 ± 0.002 | 97% | 29% | 9% |
+
+Prediction for the first columns: 2^(1/ν) = 2.9477 ± 0.0025 for ν = 0.6412 ± 0.0005. The local statistics are per cell, relative to sampled shapes, for the 64,000-cell samples; boxes are in cells of the original.
+
+| sweeps | clumps ≥ 4 | clumps ≥ 8 | clumps ≥ 16 | clumps ≥ 32 | clumps ≥ 64 |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 1.53 | 3.36 | 7.33 | 8.29 | 5.55 |
+| 4 | 1.04 | 1.11 | 1.11 | 1.14 | 1.48 |
+| 16 | 1.00 | 1.01 | 1.02 | 0.86 | 0.62 |
+| 64 | 1.00 | 1.00 | 0.98 | 0.89 | 0.89 |
+| 256 | 1.00 | 1.00 | 0.99 | 0.96 | 1.25 |
+
+Loop-connected clumps of at least that many cells, relative to the equilibrium number (`analysis/clumps.json`), in 12 refined samples.
+
+| sweeps per level | shapes | cells | growth at levels 1 to 4 | per-cell counts (12): beyond 2 s.e. | largest | the other 48: beyond 2 s.e. | largest | largest differences |
+|---:|---:|---:|---|---:|---:|---:|---:|---|
+| 16 | 32 | 1,048,912 ± 6,919 | 2.9599, 2.9641, 2.9579, 2.9611 | 8 | 23.6 | 1 | 2.1 | leaves +23.6 (+0.69%), deg2 -21.2 (-0.39%), noncut +9.8 (+0.33%) |
+| 32 | 32 | 1,036,799 ± 7,939 | 2.9542, 2.9523, 2.9491, 2.9531 | 7 | 9.8 | 1 | 2.1 | leaves +9.8 (+0.29%), deg2 -8.2 (-0.15%), straight +6.7 (+0.20%) |
+| 64 | 32 | 1,031,560 ± 11,860 | 2.9518, 2.9463, 2.9476, 2.9480 | 5 | 3.9 | 1 | 2.1 | leaves +3.9 (+0.11%), straight +3.3 (+0.10%), perim +3.2 (+0.03%) |
+
+Samples of 13,650 cells refined four times, against the equilibrium runs at 1,024,000 cells (1295 readings in 24 blocks). A difference is in standard errors of the mean of that many equilibrium samples.
+<!-- /zoom tables -->
+
+Reading the tables. The cell count settles within a few tens of sweeps at the multiple that
+scaling predicts for a shape of twice the width, 2^(1/ν), which the procedure is never told.
+Doubling leaves several times too many large loops (each survives at twice the width, and
+loops twice as wide should be about twenty times rarer per cell); they are gone within 16
+sweeps. After four refinements in a row the observables that describe the shape at large
+cannot be told from those of sampled million-cell shapes at any of the sweep counts tried,
+while per-cell counts of small features, which a million cells fix to a few parts in ten
+thousand, show how well the fine texture has settled. `analysis/zoom_deep.js` runs the
+browser's engine 400 levels deep and finds its per-cell statistics where they started.
+
+What this is not: a construction of the scaling limit of polyominoes, or evidence beyond four
+doublings, where there are no samples to compare with. Each level is a stand-in for a sample
+of that many cells seen around one point.
+
 ## Music video
 
 `video/` renders the chain as a two-minute music video. A 50×50 square is dissolved by the two
@@ -400,6 +473,7 @@ ffmpeg -i out/silent.mp4 -i music.wav -c:v copy -c:a aac -shortest video.mp4
 
 ```
 src/manyomino.cpp      the sampler
+src/zoom.cpp           refinement to twice the resolution (cells added and removed at weight 1/λ)
 src/features.h         60 shape observables (geometry, local counts, cut structure, graph distances)
 src/enumerate.cpp      exact averages of them over every polyomino of n cells
 src/leath.cpp          exact percolation clusters of a given size
@@ -408,6 +482,6 @@ ref/manyomino_v1.cpp   naive reference implementation
 proof/                 a quasi-polynomial bound on the relaxation time, and its machine check
 scripts/               production ladders (resumable); convergence runs
 analysis/              autocorrelation times, data reduction, rendering, page build
-page/                  source of the explainer page
+page/                  source of the explainer page; page/zoom.js is the in-browser refinement
 video/                 music video generator
 ```
