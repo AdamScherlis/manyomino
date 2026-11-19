@@ -176,7 +176,8 @@ table.data th:first-child,table.data td:first-child{padding-left:0}
 
 /* --- endless zoom */
 .zoomer{max-width:36rem;margin:0 auto}
-.zoomer canvas{display:block;width:100%;aspect-ratio:1/1;cursor:crosshair}
+.zoomer canvas{display:block;width:100%;aspect-ratio:1/1}
+#zoom-canvas{cursor:crosshair}
 .zstat{max-width:36rem;min-height:2.6em;margin:.5rem auto 0;font:12px var(--mono);color:var(--mut);font-variant-numeric:tabular-nums}
 .zstat b{color:var(--ink);font-weight:600}
 .zstat+.controls{max-width:36rem;margin-left:auto;margin-right:auto}

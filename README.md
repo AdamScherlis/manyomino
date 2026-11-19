@@ -421,6 +421,42 @@ even across the nest and steady in time. Stepping the zoom by a fiftieth of a le
 across a level boundary, the frame-to-frame change stays between 1.4 and 2.3 grey levels out
 of 255 throughout, with no step at any point.
 
+**Outward.** `Outward` in `page/zoom.js` makes the coarser levels around a given one, for the
+page's zoom out from single cells. A local walk cannot be run outward from the edge of a
+picture, so the surroundings are built from the far end. A far picture (from a chain of
+refinements of its own, one more step each batch at a random place) stands for the
+surroundings at the scale at which the given level is 64 sites across. The given level is
+placed where the far picture most resembles it: both are reduced to an 8×8 pattern of
+occupied blocks, and the far picture is searched over positions and its eight orientations
+for the 64×64 patch with the fewest differing blocks, plus a charge for what lies just
+outside each stretch of the patch's edge (minus the log of the measured probabilities: in real
+samples the block outside a stretch holds something 99% of the time if the window has cells
+on that stretch, 23% if not). The far picture is then refined towards that patch `J` times as
+above (`J` = 3 for a 1,024 window, 4 for 2,048), and at each step the middle of the new level
+is set to the given level at that resolution (a site occupied if any of the cells it stands
+for is) and held. Cells on the held part's outer ring that correspond to real cells on the
+window's edge stay on the list, so the shape outside can grow from them. Finally, anything
+that does not reach the new window's edge is linked to something that does by the shortest
+run of cells through empty sites (up to 48 sites, or 288 for a piece of 256 cells or more),
+and as many cells are removed from nearby tips: a polyomino is connected, so a window cannot
+contain an island. Level 0 on the page is a window of real cells from the million-cell sample.
+
+`analysis/zoom_out.js` tests it against real samples of 1,024,000 cells: the window of 256
+sites around a cell is handed to the generator, and the cells it puts in the windows twice
+and four times as wide (a generated cell of level `j` standing for 2.96^j real ones, fewer
+where the level is less relaxed) are compared with what is really there. The window is kept
+small so that the larger ones are still well inside a sample; with 512 the real counts
+already fall short of the scaling law at the largest window.
+
+<!-- zoom-out table -->
+| window | real: log2 of the growth in cells | its spread | generated | its spread | correlation with the count inside: real | generated |
+|---|---:|---:|---:|---:|---:|---:|
+| twice as wide | 1.539 ± 0.021 | 0.37 | 1.583 ± 0.020 | 0.36 | -0.38 | -0.52 |
+| four times, over twice | 1.559 ± 0.020 | 0.37 | 1.624 ± 0.018 | 0.33 | -0.42 | -0.40 |
+
+Generated over real, cell for cell, by ring of the first new level (as shares of the way from its middle to its edge): 0.5–0.55: 1.39, 0.55–0.6: 1.00, 0.6–0.72: 1.04, 0.72–0.85: 0.97, 0.85–1: 0.99. 325 cells in 13 samples. Run 90 levels outward from a 1,024 window, the fully relaxed ring of each new level holds 10,006 cells on average over the first half of the levels and 10,353 over the second, with perimeter per cell 1.1977 and 1.1959; a level takes 0.29 s. The generator puts a few per cent too much shape around a window, most of it in the innermost tenth of the new ring, where the links are made. The test is of the amount of shape at each distance, not of whether its arrangement is the right one for the given middle.
+<!-- /zoom-out table -->
+
 Three checks (`scripts/zoom_relax.sh`, `scripts/zoom_test.sh`; tables by
 `analysis/zoom_report.py`):
 
