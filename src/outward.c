@@ -292,6 +292,51 @@ int pad(int target) {
   }
   return n;
 }
+/* A better start than pad() alone for a world three times the size: turned copies of the shape itself are
+   hung on its far tips, a cell at a time outward from the join, until there are `target` cells.  Sites that
+   are taken, or in the held box, are skipped (the copy stays joined: it is added in search order and a cell
+   goes in only next to one already there). */
+int grow(int target) {
+  if (target > NMAX) target = NMAX;
+  int m = n, guard = 0;
+  static int sx[NMAX], sy[NMAX], order[NMAX];
+  for (int i = 0; i < m; i++) { sx[i] = X[i]; sy[i] = Y[i]; }
+  while (n < target && guard++ < 64) {
+    /* the cell of the present shape furthest from the root in a random direction, and a source cell far on the other side */
+    double th = runi() * 6.283185307179586, ux = 1, uy = 0; { double c = 1, s = 0, a = th; /* cos, sin by series on a reduced angle */
+      int q = (int)(a / 1.5707963267948966); a -= q * 1.5707963267948966; double a2 = a * a;
+      c = 1 - a2 / 2 + a2 * a2 / 24 - a2 * a2 * a2 / 720 + a2 * a2 * a2 * a2 / 40320; s = a - a * a2 / 6 + a * a2 * a2 / 120 - a * a2 * a2 * a2 / 5040 + a * a2 * a2 * a2 * a2 / 362880;
+      for (int k = 0; k < (q & 3); k++) { double t = c; c = -s; s = t; } ux = c; uy = s; }
+    int tip = 0; double best = -1e30;
+    for (int i = 0; i < n; i++) { double p = X[i] * ux + Y[i] * uy; if (p > best) { best = p; tip = i; } }
+    int g = rbelow(8); const int *M = G8[g];
+    int src = 0; best = 1e30;
+    for (int i = 0; i < m; i++) { double p = (M[0] * sx[i] + M[1] * sy[i]) * ux + (M[2] * sx[i] + M[3] * sy[i]) * uy; if (p < best) { best = p; src = i; } }
+    /* the copy's source cell lands on the tip; search the copy outward from there */
+    int ox = X[tip] - (M[0] * sx[src] + M[1] * sy[src]), oy = Y[tip] - (M[2] * sx[src] + M[3] * sy[src]);
+    /* a temporary index of the source cells by site: use mark[] as visited flags and a small open hash */
+    enum { HS = 1 << 17 }; static int hk[HS];
+    for (int i = 0; i < HS; i++) hk[i] = -1;
+    for (int i = 0; i < m; i++) { u32 h = ((u32)sx[i] * 73856093u ^ (u32)sy[i] * 19349663u) & (HS - 1); while (hk[h] >= 0) h = (h + 1) & (HS - 1); hk[h] = i; }
+    stamp++; int qh0 = 0, qn0 = 0; order[qn0++] = src; mark[src] = stamp;
+    while (qh0 < qn0 && n < target) {
+      int j = order[qh0++];
+      int x = ox + M[0] * sx[j] + M[1] * sy[j], y = oy + M[2] * sx[j] + M[3] * sy[j];
+      if (!occ(x, y)) {
+        if (frz && held(x, y)) continue;
+        int nb = 0; for (int e = 0; e < 4; e++) if (occ(x + DX[e], y + DY[e])) nb = 1;
+        if (!nb) continue;
+        X[n] = x; Y[n] = y; grid[at(x, y)] = n + 1; n++;
+      }
+      for (int e = 0; e < 4; e++) {
+        int qx = sx[j] + DX[e], qy = sy[j] + DY[e]; u32 h = ((u32)qx * 73856093u ^ (u32)qy * 19349663u) & (HS - 1); int k = -1;
+        while (hk[h] >= 0) { if (sx[hk[h]] == qx && sy[hk[h]] == qy) { k = hk[h]; break; } h = (h + 1) & (HS - 1); }
+        if (k >= 0 && mark[k] != stamp) { mark[k] = stamp; order[qn0++] = k; }
+      }
+    }
+  }
+  return n;
+}
 /* acceptance counts, for checking against src/manyomino.cpp: 0 relocations tried, 1 accepted, 2 transplants tried, 3 accepted, 4 local tried, 5 accepted */
 double stat(int which) { u64 v[6] = {nRel, accRel, nCP, accCP, nGC, accGC}; return (double)v[which]; }
 
@@ -336,6 +381,28 @@ int main(int argc, char **argv) {
     }
     double e = (double)samples / shapes, chi2 = 0; for (int s = 0; s < H; s++) if (cnt[s]) chi2 += (cnt[s] - e) * (cnt[s] - e) / e;
     printf("n=%d shapes=%d samples=%llu chi2=%.1f dof=%d; relocations accepted %.4f, transplants %.4f\n", m, shapes, samples, chi2, shapes - 1, stat(1) / stat(0), stat(3) / stat(2));
+    return 0;
+  }
+  if (argc > 7 && !strcmp(argv[1], "mix")) {
+    /* outward_native mix IN N B SEED PAD S1 S2 ...: pad the shape IN (root at the origin) to N cells, hold the box, and
+       print the cells in rings round the root after S1, S2, ... moves per cell in all */
+    FILE *f = fopen(argv[2], "rb"); int m; if (!f || fread(&m, 4, 1, f) != 1 || m > NMAX) return 1;
+    static int buf[2 * NMAX]; if (fread(buf, 4, 2 * (size_t)m, f) != 2 * (size_t)m) return 1; fclose(f);
+    for (int i = 0; i < m; i++) { X[i] = buf[2 * i]; Y[i] = buf[2 * i + 1]; }
+    int N = atoi(argv[3]), B = atoi(argv[4]), padmode = atoi(argv[6]); seed(9, atoi(argv[5]));
+    place(m); hold(-B, -B, B, B, 1); if (padmode == 1) grow(N); pad(N);
+    static const double E[8] = {1, 1.5, 2, 2.5, 3, 4, 6, 8}; int done = 0;
+    for (int a = 6; a < argc; a++) {
+      if (a > 6) { int S = atoi(argv[a]); for (; done < S; done++) run(n); }
+      long c[8] = {0}; double r2 = 0, mx = 0, my = 0;
+      for (int i = 0; i < n; i++) {
+        int rx = X[i] < 0 ? -X[i] - 1 : X[i], ry = Y[i] < 0 ? -Y[i] - 1 : Y[i], r = rx > ry ? rx : ry;
+        if (r < B) c[7]++; else for (int k = 0; k < 7; k++) if (r >= E[k] * B && r < E[k + 1] * B) c[k]++;
+        mx += X[i]; my += Y[i]; r2 += (double)X[i] * X[i] + (double)Y[i] * Y[i];
+      }
+      mx /= n; my /= n; r2 = r2 / n - mx * mx - my * my;
+      printf("%d %d %ld %ld %ld %ld %ld %ld %ld %ld %.1f\n", done, n, c[7], c[0], c[1], c[2], c[3], c[4], c[5], c[6], r2);
+    }
     return 0;
   }
   if (argc > 8 && !strcmp(argv[1], "step")) {
