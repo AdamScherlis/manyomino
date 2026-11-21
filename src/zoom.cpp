@@ -21,7 +21,8 @@
 // lets wide loops pile up over repeated refinements: with 64, four refinements to a million
 // cells left the largest clump a third too large on average.
 //
-//   zoom -load F [-inflate 2] [-z Z] [-sweeps T] [-kmax K] [-seed S] [-out F2] [-log E]
+//   zoom -load F [-inflate 2 | -coarsen] [-z Z] [-sweeps T] [-kmax K] [-seed S] [-out F2] [-log E]
+//        (-coarsen goes the other way: each 2x2 block holding any cell becomes one cell, and the same walk then thins that)
 //        [-win x0 y0 x1 y1]     only cells with x0 <= x < x1, y0 <= y < y1 (after inflation) move
 //        [-crop m]              with -win: write only the cells within m of the window
 //        [-snaps PREFIX -snapAt "t1 t2 ..."]   save the shape at those sweeps
@@ -158,11 +159,11 @@ static std::vector<int> readShape(const std::string &fn) {
 }
 
 int main(int argc, char **argv) {
-  std::string load, out, mode = "zoom", snaps, snapAt; int inflate = 1, nmax = 8, crop = -1; double sweeps = 0, logEvery = 0, moves = 1e8;
+  std::string load, out, mode = "zoom", snaps, snapAt; int coarsen = 0, inflate = 1, nmax = 8, crop = -1; double sweeps = 0, logEvery = 0, moves = 1e8;
   u64 seed = 1; bool haveWin = false; long target = 0; double eps = 0.01; long win[4] = {0, 0, 0, 0}; Zoom Z;
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i]; auto nxt = [&]() { if (i + 1 >= argc) { fprintf(stderr, "missing value for %s\n", a.c_str()); exit(1); } return std::string(argv[++i]); };
-    if (a == "-load") load = nxt(); else if (a == "-out") out = nxt(); else if (a == "-inflate") inflate = atoi(nxt().c_str());
+    if (a == "-load") load = nxt(); else if (a == "-out") out = nxt(); else if (a == "-inflate") inflate = atoi(nxt().c_str()); else if (a == "-coarsen") coarsen = 1;
     else if (a == "-z") Z.z = atof(nxt().c_str()); else if (a == "-sweeps") sweeps = atof(nxt().c_str());
     else if (a == "-kmax") Z.kmax = atoi(nxt().c_str()); else if (a == "-seed") seed = strtoull(nxt().c_str(), 0, 10);
     else if (a == "-log") logEvery = atof(nxt().c_str()); else if (a == "-mode") mode = nxt(); else if (a == "-moves") moves = atof(nxt().c_str());
@@ -217,7 +218,13 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  std::vector<int> v = readShape(load); size_t n0 = v.size() / 2;
+  std::vector<int> v = readShape(load); size_t nGiven = v.size() / 2;
+  if (coarsen) {                                       // half the resolution: a site is occupied if any of the four it stands for is
+    std::vector<std::pair<int,int>> c; for (size_t i = 0; i < nGiven; i++) c.push_back({v[2 * i] >> 1, v[2 * i + 1] >> 1});
+    std::sort(c.begin(), c.end()); c.erase(std::unique(c.begin(), c.end()), c.end());
+    v.clear(); for (auto &q : c) { v.push_back(q.first); v.push_back(q.second); }
+  }
+  size_t n0 = v.size() / 2;
   long xmin = 1L << 40, ymin = 1L << 40, xmax = -(1L << 40), ymax = -(1L << 40);
   for (size_t i = 0; i < n0; i++) { xmin = std::min<long>(xmin, v[2 * i]); xmax = std::max<long>(xmax, v[2 * i]); ymin = std::min<long>(ymin, v[2 * i + 1]); ymax = std::max<long>(ymax, v[2 * i + 1]); }
   int margin = haveWin ? 4 : 256;

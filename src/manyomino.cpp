@@ -289,6 +289,13 @@ struct Sampler {
     }
   }
 
+  // -freeze x0 y0 x1 y1: cells with x0 <= x < x1, y0 <= y < y1 are never moved and no cell is ever put
+  // there, so the chain samples uniformly from the polyominoes that agree with the start inside the box.
+  // (Both moves refuse symmetrically, so each stays reversible.  Use with -refCP 1: the fast transplant
+  // does not know about the box.)
+  bool frz = false; int fx0 = 0, fy0 = 0, fx1 = 0, fy1 = 0;
+  inline bool held(int x, int y) const { return x >= fx0 && x < fx1 && y >= fy0 && y < fy1; }
+
   // --- RELOCATE ---------------------------------------------------------------------
   void relocate() {
     nRel++;
@@ -299,6 +306,7 @@ struct Sampler {
     int sx = X[iu] + DX[d], sy = Y[iu] + DY[d];
     int cx = X[ic], cy = Y[ic];
     if (occ(sx, sy)) return;                    // (s == c is occupied -> null move, fine)
+    if (frz && (held(cx, cy) || held(sx, sy))) return;   // nothing leaves or enters the held box
     int k = 0;
     for (int e = 0; e < 4; e++) {
       u32 a = occ(sx + DX[e], sy + DY[e]);
@@ -388,6 +396,7 @@ struct Sampler {
       int dx = X[j] - cx, dy = Y[j] - cy;
       int x = ax + M[0] * dx + M[1] * dy, y = ay + M[2] * dx + M[3] * dy;
       nx[i] = x; ny[i] = y;
+      if (frz && (held(X[j], Y[j]) || held(x, y))) return;   // no cell of the branch may come from or land in the held box
       u32 a = occ(x, y);
       if (a) { int k = a - 1; if (!(mark[k] == stamp && lab[k] == 100)) return; }
       for (int e = 0; e < 4; e++) {
@@ -666,6 +675,7 @@ static double now() {
 int main(int argc, char **argv) {
   int n = 100, lgW = 0; u64 seed = 1; double pcp = 0.5, tsec = 0; u64 moves = 1000000, every = 0, burn = 0;
   std::string seedShape = "rect", out = "", mode = "run", load = "", snap = ""; double p = 0; u64 snapEvery = 0; int full = 1;
+  int frzBox[4] = {0, 0, 0, 0}; bool frzOn = false;
   int smax = -1, relK = 1, refCP = 0, inflate = 1, revtest = 0; double ppv = 0, ckptSec = 120, relA = 1.0; std::string ckpt = "", feat = "", blobs = "";
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
@@ -692,6 +702,7 @@ int main(int argc, char **argv) {
     else if (a == "-revtest") revtest = atoi(nxt().c_str());
     else if (a == "-relK") relK = atoi(nxt().c_str());
     else if (a == "-relA") relA = atof(nxt().c_str());
+    else if (a == "-freeze") { for (int k = 0; k < 4; k++) frzBox[k] = atoi(nxt().c_str()); frzOn = true; }
     else if (a == "-ref") refCP = atoi(nxt().c_str());
     else if (a == "-ppv") ppv = atof(nxt().c_str());
     else if (a == "-tsec") tsec = atof(nxt().c_str());
@@ -741,6 +752,7 @@ int main(int argc, char **argv) {
   if (p > 0) S.logq = std::log(1.0 - p);
   if (smax >= 0) S.smax = std::min(smax, (n - 1) / 2);
   S.relK = relK; S.relA = relA; S.refCP = refCP; S.revTest = revtest;
+  if (frzOn) { S.frz = true; S.fx0 = frzBox[0]; S.fy0 = frzBox[1]; S.fx1 = frzBox[2]; S.fy1 = frzBox[3]; S.refCP = 1; }
   u64 thr = (u64)(pcp * 18446744073709551615.0), thr2 = (u64)((pcp + ppv) * 18446744073709551615.0);
   auto step = [&]() { u64 r = S.rng.next(); if (r < thr) S.cutpaste(false); else if (r < thr2) S.cutpaste(true); else S.relocate(); };
 
