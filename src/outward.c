@@ -38,7 +38,7 @@ static int Bl[NW], nxb[NW], nyb[NW], pendList[NW];
 static int frz, fx0, fy0, fx1, fy1;
 static unsigned char *tubeMap; static int tubeOn, coverOn, orOn, tubeR = 1 << 30; static double zmul = 1.0; /* the local walk after halving may be kept to where the finer shape was (bit 1) or next to it (bit 2) */
 static int OX[NW], OY[NW], nO;
-static int plab[NMAX], cutOn, labmax, lab0;                   /* which part of the finer shape a held cell belongs to; two held cells of different parts that touch are not joined */
+static int plab[NMAX], cutOn, labmax, lab0, boxOnly;                   /* which part of the finer shape a held cell belongs to; two held cells of different parts that touch are not joined */
 static int nfix, regOn, rin, rout;            /* the local walk: cells below nfix stay; cells are added only at rin <= r < rout */
 static u64 rs[4];
 static const int DX[4] = {1, 0, -1, 0}, DY[4] = {0, 1, 0, -1};
@@ -58,7 +58,7 @@ static inline int occ(int x, int y) { return grid[at(x, y)]; }
 static inline int held(int x, int y) { return x >= fx0 && x < fx1 && y >= fy0 && y < fy1; }
 static inline int find(int a) { while (par[a] != a) a = par[a] = par[par[a]]; return a; }
 static inline int iabs(int a) { return a < 0 ? -a : a; }
-static inline int cut(int j, int k) { return (cutOn & 1) && plab[j] != plab[k] && plab[j] && plab[k]; }
+static inline int cut(int j, int k) { return (cutOn & 1) && plab[j] != plab[k] && plab[j] && plab[k]; }   /* modes 1, 3, 5 */
 
 void seed(u32 a, u32 b) {
   u64 x = ((u64)a << 32) | b;
@@ -89,7 +89,8 @@ void place(int m) {
    them (1); or the walk only keeps them up, a new cell in the box taking the label of a cell it touches (2); or as 1, and
    besides no cell is added in the box unless it touches a labelled one (3); or touching counts as joined as usual, but
    no new cell in the box may touch two of the labels there were at the start, and one that touches none of them gets
-   one new label, the same for all (4) */
+   one new label, the same for all (4); or as 3, and besides no cell of the box is taken away if that would leave what it
+   touched in the box no longer joined inside the box (5) */
 int *partlabels(void) { return plab; }
 void parts(int on) { cutOn = on; labmax = 0; if (on) for (int i = 0; i < n; i++) if (plab[i] > labmax) labmax = plab[i]; lab0 = labmax; }
 /* distance from the root in the sense used throughout: the root's own site is 0, and so are the three sites up and right of it at -1 */
@@ -102,8 +103,8 @@ void hold(int x0, int y0, int x1, int y1, int on) { frz = on; fx0 = x0; fy0 = y0
    radius K about it?  The site itself counts as empty. */
 static int connAt(int cx, int cy, int ex, int K) {
   static const int RX[8] = {1,1,0,-1,-1,-1,0,1}, RY[8] = {0,1,1,1,0,-1,-1,-1};
-  int m = 0, lb = 0;
-  for (int i = 0; i < 8; i++) { int o = occ(cx + RX[i], cy + RY[i]); if (o && o - 1 != ex) { m |= 1 << i; if ((cutOn & 1) && plab[o - 1]) lb = 1; } }
+  int m = 0, lb = boxOnly;
+  for (int i = 0; i < 8; i++) { int o = occ(cx + RX[i], cy + RY[i]); if (o && o - 1 != ex && !(boxOnly && !held(cx + RX[i], cy + RY[i]))) { m |= 1 << i; if ((cutOn & 1) && plab[o - 1]) lb = 1; } }
   int deg = ((m >> 0) & 1) + ((m >> 2) & 1) + ((m >> 4) & 1) + ((m >> 6) & 1);
   if (deg <= 1) return 1;
   int links = 0;
@@ -118,6 +119,7 @@ static int connAt(int cx, int cy, int ex, int K) {
     int o = occ(cx + DX[d], cy + DY[d]);
     if (!o || o - 1 == ex) continue;
     int j = o - 1, g;
+    if (boxOnly && !held(cx + DX[d], cy + DY[d])) continue;
     if (ex >= 0 && cut(ex, j)) continue;       /* it was not joined through the cell that goes */
     g = ng++;
     qn[g] = 0; qh[g] = 0; Q[g][qn[g]++] = j; mark[j] = stamp; lab[j] = (unsigned char)g; par[g] = g;
@@ -135,7 +137,7 @@ static int connAt(int cx, int cy, int ex, int K) {
         int o = occ(ax, ay);
         if (!o) continue;
         int k = o - 1;
-        if (cut(j, k)) continue;
+        if (cut(j, k) || (boxOnly && !held(ax, ay))) continue;
         if (mark[k] != stamp) { mark[k] = stamp; lab[k] = (unsigned char)g; Q[g][qn[g]++] = k; }
         else if (lab[k] != 255) { int a = find(lab[k]), b = find(g); if (a != b) { par[a] = b; if (--ncls == 1) return 1; } }
       }
@@ -339,7 +341,7 @@ static void gcMove(void) {
         for (int e = 0; e < 4; e++) { int o = occ(sx + DX[e], sy + DY[e]); if (o && plab[o - 1]) {
           if (cutOn == 4 && plab[o - 1] > lab0) continue;
           if (!nl) nl = plab[o - 1]; else if (nl != plab[o - 1] && cutOn != 2) return; } }
-        if (!nl) { if (cutOn == 3) return; nl = cutOn == 4 ? lab0 + 1 : labmax + 1; }
+        if (!nl) { if (cutOn == 3 || cutOn == 5) return; nl = cutOn == 4 ? lab0 + 1 : labmax + 1; }
       }
     }
     if (!connAt(sx, sy, -1, drawK(256))) return;
@@ -353,6 +355,7 @@ static void gcMove(void) {
     if (a < 1.0 && runi() >= a) return;
     if (coverOn) for (int a = -1; a <= 1; a++) for (int b = -1; b <= 1; b++) if ((tubeMap[at(cx + a, cy + b)] & 1) && !covered(cx + a, cy + b, i)) return;
     if (!connAt(cx, cy, i, drawK(256))) return;
+    if (cutOn == 5 && held(cx, cy)) { boxOnly = 1; int ok = connAt(cx, cy, i, 1 << 20); boxOnly = 0; if (!ok) return; }   /* and a part stays in one piece inside the box */
     grid[at(cx, cy)] = 0; n--;
     if (i != n) { X[i] = X[n]; Y[i] = Y[n]; grid[at(X[i], Y[i])] = i + 1; }
     if (cutOn) { plab[i] = plab[n]; plab[n] = 0; }

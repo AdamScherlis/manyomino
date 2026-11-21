@@ -7,7 +7,8 @@ within 8 * 2^(LEVELS+1) cells of the root, of which only the middle (within 16 c
 It is compared with the real cells in the same square around the same root.
 
   python3 analysis/e2e_test.py ROOTS [LEVELS=4] [SEED=1] [JOBS=4] [TAG=base] [key=value ...]
-      # key=value pairs go to the engine (N, S, TC, T, ...); writes zoomtest/e2e/TAG.json and prints a table
+      # key=value pairs go to the engine (N, S, TC, T, ...); writes zoomtest/e2e/TAG.json and prints a table.
+      # With TAG "final" it also writes analysis/e2e_test.json and analysis/e2e_pics.npz, which the page is built from.
 """
 import sys, os, json, subprocess
 import numpy as np
@@ -109,6 +110,11 @@ def main():
         else:
             d = Gm[:, j] - Rm[:, j]; se = d.std(ddof=1) / np.sqrt(n); r_, g = Rm[:, j].mean(), Gm[:, j].mean(); rows.append((k, r_, g, g / r_ - 1 if r_ else 0.0, (g - r_) / se if se > 0 else 0.0))
     json.dump({"roots": n, "levels": levels, "extra": extra, "rows": rows, "info": info}, open(os.path.join(ROOT, "zoomtest", "e2e", tag + ".json"), "w"))
+    if tag == "final":                                                               # the run the page and the README quote
+        mean = lambda k: [float(np.mean([i[L][k] for i in info])) for L in range(levels)]
+        json.dump({"roots": n, "samples": len(snaps), "levels": levels, "seed": seed, "rows": rows, "seconds": [m / 1000 for m in mean("ms")], "links": mean("links"), "unjoined": mean("unjoined"),
+                   "fineParts": mean("fineParts"), "parts": mean("parts")}, open(os.path.join(ROOT, "analysis", "e2e_test.json"), "w"), indent=1)
+        np.savez_compressed(os.path.join(ROOT, "analysis", "e2e_pics.npz"), real=np.packbits(np.array(pics, bool), axis=-1), made=np.packbits(np.array([res[i][2] for i in range(min(12, len(res))) if res[i] is not None and res[i][2] is not None], bool), axis=-1))
     print(f"{tag}: {n} roots, {levels} levels, {' '.join(extra)}")
     print(f"  {'':46s} {'real':>10s} {'made':>10s} {'diff':>8s} {'s.e.':>6s}")
     for k, r_, g, d, z in rows: print(f"  {k:46s} {r_:10.4g} {g:10.4g} {100 * d:+7.1f}% {z:+6.1f}")

@@ -41,7 +41,7 @@ def zoom_report():
     R, X = load("zoom_relax.json"), load("zoom_test.json")
     pred = 2 ** (1 / NU); pred_err = pred * math.log(2) / NU ** 2 * NU_ERR
     D = {"zoom": dict(first_shape(), sweeps=SWEEPS, growth=pred, mt=MT, gain=1.15)}; Z = D["zoom"]
-    T = {"ZM_N0": f"{Z['n']:,}", "ZM_T": str(SWEEPS), "ZM_RESULTS": "", "ZO_REAL": "1,000", "ZO_TEXT": ""}
+    T = {"ZM_N0": f"{Z['n']:,}", "ZM_T": str(SWEEPS), "ZM_RESULTS": ""}
     if not R: return D, T
     pm = lambda v, d=3: f"{v[0]:.{d}f}&nbsp;&plusmn;&nbsp;{v[1]:.{d}f}"
     G = growth_by_T(R, X); sets = R["sets"]; ti = {t: i for i, t in enumerate(R["T"])}
@@ -118,27 +118,6 @@ def zoom_report():
                "window&rsquo;s edge, and not at all on its outermost part, which is therefore the coarser picture exactly, drawn with four squares for one. A finer level has less ink per "
                f"unit area, by the same factor {pred:.2f}/4 as before, and is brightened to match." + deep + "</p>")
     T["ZM_RESULTS"] = "\n  ".join(out)
-    Zo = load("zoom_out.json")
-    if Zo:
-        s1, s2 = Zo["summary"]["step1"], Zo["summary"]["step2"]; f = lambda v: f"{v[0]:.2f}&nbsp;&plusmn;&nbsp;{v[2]:.2f}"; rg = Zo["rings"]
-        T["ZO_TEXT"] = "\n  ".join([
-            "<p>So the surroundings are built from the far end. Take a picture of some other typical piece of shape, and let it stand for the surroundings at a coarser scale, the scale at "
-            "which the known part is 64 squares across. Where in that picture should the known part go? Where it looks most like it. Both are reduced to an 8&nbsp;&times;&nbsp;8 pattern "
-            "of which blocks hold anything, and the far picture is searched, in all eight orientations, for the patch that agrees best, counting also whether it has something just "
-            "outside wherever the known part runs off its edge. The far picture is then refined towards that patch, one doubling at a time, exactly as for zooming in, but with the "
-            "known part set into the middle at each resolution and held there while the walk works around it. One more rule is needed. A polyomino is in one piece, so nothing in a "
-            "window can be an island: whatever does not reach the window&rsquo;s edge is given a short link to something that does. A batch of work yields three or four new levels, "
-            "and the outermost becomes the known part for the next.</p>",
-            f"<p>This is a cruder approximation than zooming in, and it can be tested less far, but it can be tested. In real samples of 1,024,000 cells, take the window "
-            f"{Zo['G']} squares wide around a cell, hand it to the procedure, and count what it puts in the windows twice and four times as wide. Over {Zo['roots']} cells, the real count "
-            f"grows by a factor of 2 to the power {f(s1['real'])} at the first doubling and {f(s2['real'])} at the second. The generated one grows by 2 to the power {f(s1['gen'])} and "
-            f"{f(s2['gen'])}: a few per cent too much shape, more clearly so at the second. The spread from one cell to another is about right: {s1['real'][1]:.2f} and {s2['real'][1]:.2f} "
-            f"in that exponent for the real surroundings, {s1['gen'][1]:.2f} and {s2['gen'][1]:.2f} for the generated. The excess sits where the new shape is joined on. In the first "
-            f"tenth of the way from the known part to the edge of the new window there is {100 * (rg[0][2] - 1):.0f}% too much of it; from there to the edge of the window the generated and the real amounts "
-            f"agree within {100 * max(abs(r[2] - 1) for r in rg[1:]):.0f}%. Run {Zo['levels']} levels outward, the number of squares in each new level and its fine texture show no drift.</p>",
-            "<p>What that does not show is that the surroundings are the right ones for this particular middle. The procedure knows the middle only as a coarse pattern and through the "
-            "joins, and whether the arrangement it produces is right, beyond the amount of shape at each distance and what the eye accepts, has not been tested.</p>"])
-        T["ZO_REAL"] = "a thousand"
     return D, T
 
 

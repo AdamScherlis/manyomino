@@ -67,6 +67,7 @@ def prep(fn):
 from conv_report import conv_report, guarantee_report
 from clump_report import clump_report
 from zoom_report import zoom_report
+from out_report import out_report
 
 
 def main():
@@ -223,6 +224,7 @@ def main():
             T[k] = T[k].replace("@NEFF@", f"{round(kept / hero_n / float(T['HS_BLOB_RAW']), -1):.0f}")
     CD, CLT = clump_report(D.get("hero_slow"))                # clump lifetimes (analysis/clumps.py)
     ZD, ZT = zoom_report(); D.update(ZD); T.update(ZT)        # endless zoom (page/zoom.js)
+    T.update(out_report(assets))                                # and out (page/outward.js)
     D.update(CD); T.update(CLT)
     T["HERO_MOVES_EXP"] = f"{math.log10(hero_row['moves']):.0f}"
     T["HERO_CHAINS"] = {2: "two", 3: "three", 4: "four", 5: "five"}.get(hero_row["chains"], str(hero_row["chains"]))

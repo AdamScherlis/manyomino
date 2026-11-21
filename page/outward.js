@@ -15,7 +15,7 @@
 // four).  Coordinates put the root at the origin; r is max(|x|, |y|) with -1 folded onto 0, so
 // r < R is the square of side 2R about the root.
 
-const OUT = { B: 8, N: 16000, S: 100, TC: 16, RULE: 3, COVER: 1, W: 0.7, PARTS: 1, T: 16, REACH: 32, COLLAR: 4, SHADE: 0, STAGECUT: 4, NEAR: 2, CARRY: 1 };
+const OUT = { B: 8, N: 16000, S: 100, TC: 16, RULE: 3, COVER: 1, W: 0.65, PARTS: 5, T: 16, REACH: 32, COLLAR: 4, SHADE: 0, STAGECUT: 4, NEAR: 2, CARRY: 1, TINY: 3, T1: 32 };
 const outRad = (x, y) => { const a = x < 0 ? -x - 1 : x, b = y < 0 ? -y - 1 : y; return a > b ? a : b; };
 
 // E: the engine's exports (after E.init); o: { J, seed, and any of OUT's fields }
@@ -62,6 +62,11 @@ function Outgoer(E, o) {
     const find = a => { while (up[a] !== a) a = up[a] = up[up[a]]; return a; };
     for (let i = 0; i < m; i++) { if (outRad(Y.x[i], Y.y[i]) >= B) continue; lab[i] = -1;
       for (let q = 0; q < 4; q++) { const k = fp.pos.get(key(2 * Y.x[i] + (q & 1), 2 * Y.y[i] + (q >> 1))); if (k === undefined) continue; if (lab[i] < 0) lab[i] = fp.part[k]; else up[find(fp.part[k])] = find(lab[i]); } }
+    // a part of only a cell or two is not kept apart from what it touches
+    if (P.TINY) { const size = new Int32Array(fp.np), at = new Map(); for (let k = 0; k < fp.part.length; k++) size[fp.part[k]]++;
+      for (let i = 0; i < m; i++) if (outRad(Y.x[i], Y.y[i]) < B) at.set(key(Y.x[i], Y.y[i]), i);
+      const sz = a => { let t = 0; for (let q = 0; q < fp.np; q++) if (find(q) === find(a)) t += size[q]; return t; };
+      for (const [k, i] of at) { if (sz(lab[i]) > P.TINY) continue; for (const [dx, dy] of NB) { const j = at.get(key(Y.x[i] + dx, Y.y[i] + dy)); if (j !== undefined && find(lab[j]) !== find(lab[i])) { up[find(lab[i])] = find(lab[j]); break; } } } }
     for (let i = 0; i < m; i++) if (outRad(Y.x[i], Y.y[i]) < B) lab[i] = find(lab[i]) + 1;
     let kinds = 0; for (let a = 0; a < fp.np; a++) if (find(a) === a) kinds++;
     return { lab, of: p_ => find(p_) + 1, kinds };
@@ -74,11 +79,11 @@ function Outgoer(E, o) {
     info.halved = E.coarsen(); const lb = labels(get(0, E.count()), fp); info.partsHalved = lb.kinds;
     E.hold(-B, -B, B, B, 1);
     if (P.PARTS) {
-      new Int32Array(E.memory.buffer, E.partlabels(), lb.lab.length).set(lb.lab); E.parts(1);
+      new Int32Array(E.memory.buffer, E.partlabels(), lb.lab.length).set(lb.lab); E.parts(P.PARTS);
       const ol = new Int32Array(E.memory.buffer, E.orlabels(), 4 * B * B).fill(0), Y = get(0, E.count());
       for (let i = 0; i < lb.lab.length; i++) if (lb.lab[i]) ol[(Y.y[i] + B) * 2 * B + Y.x[i] + B] = lb.lab[i];
     }
-    E.tube(P.RULE); E.shadow(P.COVER, P.W); E.relax(4 * P.TC); E.tube(0); E.shadow(0, 1); info.thinned = E.count(); info.fineParts = fp.np;
+    E.tube(P.RULE); E.shadow(P.COVER, P.W); E.relax(4 * P.TC); E.tube(0); E.shadow(0, 1); if (P.PARTS) E.parts(1); info.thinned = E.count(); info.fineParts = fp.np;
     info.partsThinned = new Set(new Int32Array(E.memory.buffer, E.partlabels(), E.count()).filter(v => v)).size;
     return Int32Array.from(fp.part, lb.of);            // for each cell of the finer world out to twice the box, the label of its part
   }
@@ -95,11 +100,12 @@ function Outgoer(E, o) {
     return { id, np, at: (x, y) => (x < -R || y < -R || x >= R || y >= R) ? -1 : g[(y + R) * W + x + R] - 1 };
   }
 
-  // the next level out; returns its picture (G x G bytes, the root at the middle), with .info
-  function next() {
+  // The next level out, as a piece of work that can be done a little at a time (it yields between sweeps); its
+  // value at the end is the picture (G x G bytes, the root at the middle), with .info.
+  function* work() {
     const info = { level: level + 1 }, t0 = Date.now(), pinLab = halve(info);
-    E.grow(P.N); E.pad(P.N);
-    for (let s = 0; s < P.S; s++) E.run(E.count());
+    E.grow(P.N); E.pad(P.N); yield;
+    for (let s = 0; s < P.S; s++) { E.run(E.count()); yield; }
     world = get(0, E.count()); world.lab = P.PARTS ? new Int32Array(E.memory.buffer, E.partlabels(), world.x.length).slice() : null; E.parts(0); level++; info.msWorld = Date.now() - t0;
     info.parts = world.lab ? new Set(world.lab.filter(v => v)).size : 0;
     // The picture.  Stage 0 is the world's own cells out to twice the box; each stage after is twice as fine.
@@ -188,7 +194,7 @@ function Outgoer(E, o) {
         } }
       // near both seams no place where there is a cell now may be left bare: the next stage must find its cells where this one has them
       if (P.SHADE) E.shade(nfix, nfix + ncol + nzone);
-      E.pin(nfix, b - P.COLLAR, 2 * b); E.relax(4 * P.T); if (P.SHADE) E.shade(0, 0);
+      E.pin(nfix, b - P.COLLAR, 2 * b); for (let q = 4 * Math.max(P.T, P.T1 >> (j - 1)); q > 0; q--) { E.relax(1); yield; } if (P.SHADE) E.shade(0, 0);
       const got = get(0, E.count()), gl = new Int32Array(E.memory.buffer, E.partlabels(), E.count()); st.push(got); E.parts(0);
       // The ring from here on is what lies outside the seam.  A strand of it that grew in over the seam (its label is the
       // new one) is left behind with the inside, unless it is all that joins two things: two parts of the ring, or the
@@ -212,7 +218,11 @@ function Outgoer(E, o) {
     prev = st; info.ms = Date.now() - t0;
     const pic = picture(st[J]); pic.info = info; return pic;
   }
-  return { begin, next, halve, G, get level() { return level; }, get world() { return world; }, get stages() { return prev; } };
+  function next() { const g = work(); for (;;) { const r = g.next(); if (r.done) return r.value; } }
+  // the same, working for about `ms` milliseconds at a call: null until the level is finished, then its picture
+  let going = null;
+  function step(ms) { const t = Date.now(); if (!going) going = work(); for (;;) { const r = going.next(); if (r.done) { going = null; return r.value; } if (Date.now() - t >= ms) return null; } }
+  return { begin, next, step, halve, G, get level() { return level; }, get world() { return world; }, get stages() { return prev; } };
 }
 
 if (typeof module !== 'undefined') module.exports = { OUT, outRad, Outgoer };
