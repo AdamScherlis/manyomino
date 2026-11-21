@@ -12,28 +12,34 @@
  *                  moves and nothing is put there, so the chain samples uniformly from the
  *                  polyominoes of N cells that agree with the world inside the box.
  *
- * Free-standing C (no library), for clang --target=wasm32; `make_outward.sh` builds it.  With
- * -DNATIVE it also builds as an ordinary program for testing.  The lattice is a torus of side
- * W = 2^LG, far wider than a world of the sizes used.
+ * The same local walk also draws the pictures.  A world's cells are large on the screen, so its
+ * ring is refined several times (each cell becomes four, then the walk runs), every time with the
+ * finer level's picture held fixed inside the box and joined to it (pin(), link()).
+ *
+ * Free-standing C (no library), for clang --target=wasm32; `scripts/make_outward.sh` builds it.
+ * With -DNATIVE it also builds as an ordinary program for testing.  The lattice is a torus of
+ * side 2^lg (init(lg)), far wider than a world or a picture of the sizes used.
  */
 typedef unsigned int u32;
 typedef unsigned long long u64;
-#ifndef LG
-#define LG 11
-#endif
-#define W (1 << LG)
-#define MASK (W - 1)
 #ifndef NMAX
-#define NMAX 49152
+#define NMAX 524288                            /* most cells in a picture */
+#endif
+#ifndef NW
+#define NW 65536                               /* most cells in a world */
 #endif
 
-static int grid[W * W];                       /* index of the cell at a site, plus 1; 0 if empty */
+static int *grid, LG, W, MASK;                /* index of the cell at a site, plus 1; 0 if empty */
 static int X[NMAX], Y[NMAX], n;
-static u32 mark[NMAX], pend[NMAX], stamp;
+static u32 mark[NMAX], pend[NW], stamp;
 static unsigned char lab[NMAX];
 static int Q[5][NMAX], qn[5], qh[5], par[5], imgi[5];
-static int Bl[NMAX], nxb[NMAX], nyb[NMAX], pendList[NMAX];
+static int Bl[NW], nxb[NW], nyb[NW], pendList[NW];
 static int frz, fx0, fy0, fx1, fy1;
+static unsigned char *tubeMap; static int tubeOn, coverOn; static double zmul = 1.0; /* the local walk after halving may be kept to where the finer shape was (bit 1) or next to it (bit 2) */
+static int OX[NW], OY[NW], nO;
+static int plab[NW], cutOn, labmax;                   /* which part of the finer shape a held cell belongs to; two held cells of different parts that touch are not joined */
+static int nfix, regOn, rin, rout;            /* the local walk: cells below nfix stay; cells are added only at rin <= r < rout */
 static u64 rs[4];
 static const int DX[4] = {1, 0, -1, 0}, DY[4] = {0, 1, 0, -1};
 static const int G8[8][4] = {{1,0,0,1},{0,-1,1,0},{-1,0,0,-1},{0,1,-1,0},{1,0,0,-1},{0,1,1,0},{-1,0,0,1},{0,-1,-1,0}};
@@ -52,6 +58,7 @@ static inline int occ(int x, int y) { return grid[at(x, y)]; }
 static inline int held(int x, int y) { return x >= fx0 && x < fx1 && y >= fy0 && y < fy1; }
 static inline int find(int a) { while (par[a] != a) a = par[a] = par[par[a]]; return a; }
 static inline int iabs(int a) { return a < 0 ? -a : a; }
+static inline int cut(int j, int k) { return cutOn && plab[j] != plab[k] && plab[j] && plab[k]; }
 
 void seed(u32 a, u32 b) {
   u64 x = ((u64)a << 32) | b;
@@ -62,24 +69,42 @@ int *ys(void) { return Y; }
 int count(void) { return n; }
 int capacity(void) { return NMAX; }
 int side(void) { return W; }
-/* take the m cells written at xs(), ys() as the world */
+#ifdef NATIVE
+void *calloc(unsigned long, unsigned long);
+static void *room(unsigned long bytes) { return calloc(bytes, 1); }
+#else
+static void *room(unsigned long bytes) { unsigned long was = __builtin_wasm_memory_grow(0, (bytes + 65535) >> 16); return (void *)(was << 16); }
+#endif
+/* a lattice of side 2^lg; call once, first */
+void init(int lg) { LG = lg; W = 1 << lg; MASK = W - 1; grid = (int *)room((unsigned long)W * W * sizeof(int)); tubeMap = (unsigned char *)room((unsigned long)W * W); n = 0; }
+/* the present cells are forgotten: write new ones at xs(), ys() and call place() */
+void clear(void) { for (int i = 0; i < n; i++) grid[at(X[i], Y[i])] = 0; n = 0; }
+/* take the m cells written at xs(), ys() as the shape (after clear()) */
 void place(int m) {
-  for (int i = 0; i < W * W; i++) grid[i] = 0;
   n = m; for (int i = 0; i < n; i++) grid[at(X[i], Y[i])] = i + 1;
+  nfix = 0; regOn = 0; frz = 0; tubeOn = 0; coverOn = 0; zmul = 1.0; cutOn = 0;
+  for (int i = 0; i < NW; i++) plab[i] = 0;
 }
+/* part labels, one per cell (write them after place(); 0 for a cell with none), and whether the sampler heeds them */
+int *partlabels(void) { return plab; }
+void parts(int on) { cutOn = on; labmax = 0; if (on) for (int i = 0; i < n && i < NW; i++) if (plab[i] > labmax) labmax = plab[i]; }
+/* distance from the root in the sense used throughout: the root's own site is 0, and so are the three sites up and right of it at -1 */
+static inline int rad(int x, int y) { int a = x < 0 ? -x - 1 : x, b = y < 0 ? -y - 1 : y; return a > b ? a : b; }
+/* the first k cells are fixed for the local walk, which may add cells only at a <= r < b */
+void pin(int k, int a, int b) { nfix = k; regOn = 1; rin = a; rout = b; }
 void hold(int x0, int y0, int x1, int y1, int on) { frz = on; fx0 = x0; fy0 = y0; fx1 = x1; fy1 = y1; }
 
 /* Are the neighbours (leaving out cell `ex`) of site (cx, cy) joined to each other inside the box of
    radius K about it?  The site itself counts as empty. */
 static int connAt(int cx, int cy, int ex, int K) {
   static const int RX[8] = {1,1,0,-1,-1,-1,0,1}, RY[8] = {0,1,1,1,0,-1,-1,-1};
-  int m = 0;
-  for (int i = 0; i < 8; i++) { int o = occ(cx + RX[i], cy + RY[i]); if (o && o - 1 != ex) m |= 1 << i; }
+  int m = 0, lb = 0;
+  for (int i = 0; i < 8; i++) { int o = occ(cx + RX[i], cy + RY[i]); if (o && o - 1 != ex) { m |= 1 << i; if (cutOn && plab[o - 1]) lb = 1; } }
   int deg = ((m >> 0) & 1) + ((m >> 2) & 1) + ((m >> 4) & 1) + ((m >> 6) & 1);
   if (deg <= 1) return 1;
   int links = 0;
   for (int i = 0; i < 8; i += 2) if ((m >> i & 1) && (m >> ((i + 1) & 7) & 1) && (m >> ((i + 2) & 7) & 1)) links++;
-  if (links >= deg - 1) return 1;
+  if (links >= deg - 1 && !lb) return 1;       /* the quick answer takes touching for joined, so not next to labelled cells */
   if (K <= 1) return 0;
   stamp++;
   if (ex >= 0) { mark[ex] = stamp; lab[ex] = 255; }
@@ -87,9 +112,12 @@ static int connAt(int cx, int cy, int ex, int K) {
   for (int d = 0; d < 4; d++) {
     int o = occ(cx + DX[d], cy + DY[d]);
     if (!o || o - 1 == ex) continue;
-    int j = o - 1, g = ng++;
+    int j = o - 1, g;
+    if (ex >= 0 && cut(ex, j)) continue;       /* it was not joined through the cell that goes */
+    g = ng++;
     qn[g] = 0; qh[g] = 0; Q[g][qn[g]++] = j; mark[j] = stamp; lab[j] = (unsigned char)g; par[g] = g;
   }
+  if (ng <= 1) return 1;
   int ncls = ng;
   for (;;) {
     for (int g = 0; g < ng; g++) {
@@ -102,6 +130,7 @@ static int connAt(int cx, int cy, int ex, int K) {
         int o = occ(ax, ay);
         if (!o) continue;
         int k = o - 1;
+        if (cut(j, k)) continue;
         if (mark[k] != stamp) { mark[k] = stamp; lab[k] = (unsigned char)g; Q[g][qn[g]++] = k; }
         else if (lab[k] != 255) { int a = find(lab[k]), b = find(g); if (a != b) { par[a] = b; if (--ncls == 1) return 1; } }
       }
@@ -149,16 +178,23 @@ static inline int locallyConnected(int cx, int cy) {
    step, and the image of each branch cell is tested as it is found. */
 static void transplant(void) {
   nCP++;
+  if (n > NW) return;
   int ic = rbelow(n), d = rbelow(4), ia = rbelow(n), g = rbelow(8), smax = (n - 1) / 2;
   int cx = X[ic], cy = Y[ic];
   if (!occ(cx + DX[d], cy + DY[d])) return;
-  if (locallyConnected(cx, cy)) return;
+  if (!cutOn) { if (locallyConnected(cx, cy)) return; }
+  else {                                        /* as above: the quick answer only away from labelled cells */
+    int lb = plab[ic] != 0;
+    for (int a = -1; a <= 1 && !lb; a++) for (int b = -1; b <= 1; b++) { int o = occ(cx + a, cy + b); if (o && plab[o - 1]) { lb = 1; break; } }
+    if (!lb && locallyConnected(cx, cy)) return;
+    if (cut(ic, occ(cx + DX[d], cy + DY[d]) - 1)) return;
+  }
   stamp++;
   mark[ic] = stamp; lab[ic] = 255;
   int ngrp = 0, gd = -1;
   for (int e = 0; e < 4; e++) {
     int o = occ(cx + DX[e], cy + DY[e]);
-    if (!o) continue;
+    if (!o || cut(ic, o - 1)) continue;
     int j = o - 1, h = ngrp++;
     qn[h] = 0; qh[h] = 0; imgi[h] = 0; Q[h][qn[h]++] = j; mark[j] = stamp; lab[j] = (unsigned char)h; par[h] = h;
     if (e == d) gd = h;
@@ -179,6 +215,7 @@ static void transplant(void) {
         int o = occ(x + DX[e], y + DY[e]);
         if (!o) continue;
         int k = o - 1;
+        if (cut(j, k)) continue;
         if (mark[k] != stamp) { mark[k] = stamp; lab[k] = (unsigned char)h; Q[h][qn[h]++] = k; }
         else if (lab[k] != 255) { int a = find(lab[k]), b = find(h); if (a != b) par[a] = b; }
       }
@@ -241,38 +278,69 @@ void run(int m) {
 int coarsen(void) {
   int m = n;
   for (int i = 0; i < m; i++) grid[at(X[i], Y[i])] = 0;
+  for (int i = 0; i < nO; i++) for (int a = -1; a <= 1; a++) for (int b = -1; b <= 1; b++) tubeMap[at(OX[i] + a, OY[i] + b)] = 0;
   n = 0;
   for (int i = 0; i < m; i++) {
     int x = X[i] >> 1, y = Y[i] >> 1;
     if (occ(x, y)) continue;
     X[n] = x; Y[n] = y; grid[at(x, y)] = n + 1; n++;
   }
+  nO = n < NW ? n : 0;
+  for (int i = 0; i < nO; i++) { OX[i] = X[i]; OY[i] = Y[i]; for (int a = -1; a <= 1; a++) for (int b = -1; b <= 1; b++) tubeMap[at(X[i] + a, Y[i] + b)] |= 2; }
+  for (int i = 0; i < nO; i++) tubeMap[at(X[i], Y[i])] |= 1;
   return n;
+}
+/* after coarsen(): the local walk adds cells only where the finer shape had cells (1), or there and at the
+   sites round them (3); 0 lifts the rule */
+void tube(int mode) { tubeOn = mode; }
+/* with cover on, the walk also never takes a cell away if that would leave a site where the finer shape had cells with
+   no cell on it or round it; w multiplies the weight of a cell (to make up for the room the rule takes away) */
+void shadow(int cover, double w) { coverOn = cover; zmul = w; }
+enum { OB = 64 }; static int orLab[OB * OB];  /* for the sites of the box: the label of the finer shape's part there after halving */
+int *orlabels(void) { return orLab; }
+static int covered(int qx, int qy, int ex) {
+  int want = 0;                                 /* in the box, a part's place must be kept by that part */
+  if (cutOn && held(qx, qy) && fx1 - fx0 <= OB) want = orLab[(qy - fy0) * (fx1 - fx0) + (qx - fx0)];
+  for (int a = -1; a <= 1; a++) for (int b = -1; b <= 1; b++) { int o = occ(qx + a, qy + b); if (o && o - 1 != ex && (!want || plab[o - 1] == want)) return 1; }
+  return 0;
 }
 
 /* one move of the local walk: a cell added next to the shape or taken away, the count free */
 static void gcMove(void) {
-  const double Z = 1.0 / 4.0625696;
+  const double Z = zmul / 4.0625696;
   nGC++;
   int i = rbelow(n), r = (int)(rnext() >> 61), cx = X[i], cy = Y[i];
   if (r < 4) {
     int sx = cx + DX[r], sy = cy + DY[r];
     if (occ(sx, sy) || n >= NMAX) return;
+    if (regOn) { int r0 = rad(sx, sy); if (r0 < rin || r0 >= rout) return; }
+    if (tubeOn && !(tubeMap[at(sx, sy)] & tubeOn)) return;
     int k = 0; for (int e = 0; e < 4; e++) if (occ(sx + DX[e], sy + DY[e])) k++;
     if (k > 1 && rbelow(k) != 0) return;
     double a = 4.0 * Z * n / (n + 1.0);
     if (a < 1.0 && runi() >= a) return;
+    int nl = 0;
+    if (cutOn) {                                /* a new cell in the box takes the label of what it touches there, and may not touch two */
+      if (n >= NW) return;
+      if (held(sx, sy)) {
+        for (int e = 0; e < 4; e++) { int o = occ(sx + DX[e], sy + DY[e]); if (o && plab[o - 1]) { if (!nl) nl = plab[o - 1]; else if (nl != plab[o - 1]) return; } }
+        if (!nl) nl = labmax + 1;
+      }
+    }
     if (!connAt(sx, sy, -1, drawK(256))) return;
+    if (cutOn) { plab[n] = nl; if (nl > labmax) labmax = nl; }
     X[n] = sx; Y[n] = sy; grid[at(sx, sy)] = n + 1; n++; accGC++;
   } else {
-    if (n <= 1) return;
+    if (n <= 1 || i < nfix) return;
     int k = 0; for (int e = 0; e < 4; e++) if (occ(cx + DX[e], cy + DY[e])) k++;
     if (!k) return;
     double a = n / (4.0 * Z * (n - 1.0));
     if (a < 1.0 && runi() >= a) return;
+    if (coverOn) for (int a = -1; a <= 1; a++) for (int b = -1; b <= 1; b++) if ((tubeMap[at(cx + a, cy + b)] & 1) && !covered(cx + a, cy + b, i)) return;
     if (!connAt(cx, cy, i, drawK(256))) return;
     grid[at(cx, cy)] = 0; n--;
     if (i != n) { X[i] = X[n]; Y[i] = Y[n]; grid[at(X[i], Y[i])] = i + 1; }
+    if (cutOn) { plab[i] = plab[n]; plab[n] = 0; }
     accGC++;
   }
 }
@@ -283,11 +351,12 @@ void relax(int quarters) {
 
 /* cells added at random empty sites next to the shape, outside the held box, until there are `target` */
 int pad(int target) {
-  if (target > NMAX) target = NMAX;
+  if (target > NW) target = NW;
   u64 tries = 0;
-  while (n < target && tries++ < 400ULL * NMAX) {
+  while (n < target && tries++ < 400ULL * NW) {
     int i = rbelow(n), d = rbelow(4), sx = X[i] + DX[d], sy = Y[i] + DY[d];
     if (occ(sx, sy) || (frz && held(sx, sy))) continue;
+    if (n < NW) plab[n] = 0;
     X[n] = sx; Y[n] = sy; grid[at(sx, sy)] = n + 1; n++;
   }
   return n;
@@ -297,9 +366,9 @@ int pad(int target) {
    are taken, or in the held box, are skipped (the copy stays joined: it is added in search order and a cell
    goes in only next to one already there). */
 int grow(int target) {
-  if (target > NMAX) target = NMAX;
+  if (target > NW) target = NW;
   int m = n, guard = 0;
-  static int sx[NMAX], sy[NMAX], order[NMAX];
+  static int sx[NW], sy[NW], order[NW];
   for (int i = 0; i < m; i++) { sx[i] = X[i]; sy[i] = Y[i]; }
   while (n < target && guard++ < 64) {
     /* the cell of the present shape furthest from the root in a random direction, and a source cell far on the other side */
@@ -326,7 +395,7 @@ int grow(int target) {
         if (frz && held(x, y)) continue;
         int nb = 0; for (int e = 0; e < 4; e++) if (occ(x + DX[e], y + DY[e])) nb = 1;
         if (!nb) continue;
-        X[n] = x; Y[n] = y; grid[at(x, y)] = n + 1; n++;
+        plab[n] = 0; X[n] = x; Y[n] = y; grid[at(x, y)] = n + 1; n++;
       }
       for (int e = 0; e < 4; e++) {
         int qx = sx[j] + DX[e], qy = sy[j] + DY[e]; u32 h = ((u32)qx * 73856093u ^ (u32)qy * 19349663u) & (HS - 1); int k = -1;
@@ -337,6 +406,48 @@ int grow(int target) {
   }
   return n;
 }
+/* Joining a picture to the finer one held inside it.  The cell (ox, oy) of the coarser picture lay just outside
+   the box of radius b (in the present, finer lattice) and touched a cell inside it in direction (dx, dy).  Its
+   four cells are now in place, and the first `npin` cells are the finer picture inside the box.  If the four no
+   longer touch one of those, the shortest path of empty sites inside the box to one of them, at most `reach`
+   long, is filled.  With `want`, only a cell of that part (partlabels()) will do.  Returns the number of cells added,
+   or -1 if there is no such path. */
+int link(int ox, int oy, int dx, int dy, int b, int npin, int reach, int want) {
+  enum { R = 12, S = 2 * R + 1 };
+  static int seen[S * S], from[S * S], qx[S * S], qy[S * S]; static int tick;
+  if (reach > R - 1) reach = R - 1;
+  int sx[2], sy[2];
+  for (int t = 0; t < 2; t++) {            /* the two sites inside the box that face the four cells */
+    sx[t] = dx ? (dx < 0 ? 2 * ox - 1 : 2 * ox + 2) : 2 * ox + t;
+    sy[t] = dy ? (dy < 0 ? 2 * oy - 1 : 2 * oy + 2) : 2 * oy + t;
+    int o = occ(sx[t], sy[t]); if (o && o - 1 < npin && (!want || plab[o - 1] == want)) return 0;
+  }
+  int cx = sx[0], cy = sy[0], h = 0, m = 0; tick++;
+  for (int t = 0; t < 2; t++) {
+    if (occ(sx[t], sy[t]) || rad(sx[t], sy[t]) >= b) continue;
+    int k = (sy[t] - cy + R) * S + (sx[t] - cx + R); seen[k] = tick; from[k] = -1; qx[m] = sx[t]; qy[m] = sy[t]; m++;
+  }
+  int depth = 1, levelEnd = m;
+  while (h < m) {
+    if (h == levelEnd) { depth++; levelEnd = m; if (depth > reach) break; }
+    int x = qx[h], y = qy[h], k = (y - cy + R) * S + (x - cx + R); h++;
+    for (int e = 0; e < 4; e++) { int o = occ(x + DX[e], y + DY[e]); if (o && o - 1 < npin && (!want || plab[o - 1] == want)) {
+      int added = 0;                       /* fill the path back to the start */
+      for (int j = k; j >= 0; j = from[j]) {
+        if (n >= NMAX) return -1;
+        int px = j % S - R + cx, py = j / S - R + cy; X[n] = px; Y[n] = py; grid[at(px, py)] = n + 1; n++; added++;
+      }
+      return added;
+    } }
+    for (int e = 0; e < 4; e++) {
+      int ax = x + DX[e], ay = y + DY[e];
+      if (iabs(ax - cx) > R || iabs(ay - cy) > R || rad(ax, ay) >= b || occ(ax, ay)) continue;
+      int j = (ay - cy + R) * S + (ax - cx + R); if (seen[j] == tick) continue;
+      seen[j] = tick; from[j] = k; qx[m] = ax; qy[m] = ay; m++;
+    }
+  }
+  return -1;
+}
 /* acceptance counts, for checking against src/manyomino.cpp: 0 relocations tried, 1 accepted, 2 transplants tried, 3 accepted, 4 local tried, 5 accepted */
 double stat(int which) { u64 v[6] = {nRel, accRel, nCP, accCP, nGC, accGC}; return (double)v[which]; }
 
@@ -344,18 +455,21 @@ double stat(int which) { u64 v[6] = {nRel, accRel, nCP, accCP, nGC, accGC}; retu
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-/* outward_native exact NCELLS MOVES SEED: every shape of NCELLS cells should turn up equally often
-   outward_native held NCELLS MOVES SEED: the same with a 2x2 box held
+/* outward_native exact NCELLS MOVES SEED [THIN]: every shape of NCELLS cells should turn up equally often
+     (a shape is noted every THIN moves per cell, 10 unless given; too few and the notes are not independent)
+   outward_native held NCELLS MOVES SEED [THIN]: the same with a 2x2 box held
+   outward_native cut NCELLS MOVES SEED [THIN]: the same with two held cells that touch without being joined
    outward_native step IN OUT N S TC B SEED: one step outward from the shape IN (root at the origin) */
 int main(int argc, char **argv) {
+  init(12);
   if (argc > 4 && !strcmp(argv[1], "exact")) {
-    int m = atoi(argv[2]); long long moves = atoll(argv[3]); seed(1, atoi(argv[4]));
+    int m = atoi(argv[2]), thin = argc > 5 ? atoi(argv[5]) : 10; long long moves = atoll(argv[3]); seed(1, atoi(argv[4]));
     for (int i = 0; i < m; i++) { X[i] = i; Y[i] = 0; } place(m);
     /* count shapes by a hash of their cells relative to the lower-left corner */
     enum { H = 1 << 20 }; static unsigned long long keyv[H]; static unsigned cnt[H]; unsigned long long samples = 0; int shapes = 0;
     for (long long t = 0; t < moves; t++) {
       run(1);
-      if (t % (10 * m)) continue;
+      if (t % ((long long)thin * m)) continue;
       int x0 = 1 << 30, y0 = 1 << 30; for (int i = 0; i < n; i++) { if (X[i] < x0) x0 = X[i]; if (Y[i] < y0) y0 = Y[i]; }
       unsigned long long h = 0; for (int i = 0; i < n; i++) { unsigned long long c = (unsigned long long)(X[i] - x0) * 64 + (Y[i] - y0); c = (c + 1) * 0x9e3779b97f4a7c15ULL; c ^= c >> 29; c *= 0xbf58476d1ce4e5b9ULL; h += c ^ (c >> 32); }
       unsigned s = (unsigned)(h % H); while (cnt[s] && keyv[s] != h) s = (s + 1) % H;
@@ -368,13 +482,31 @@ int main(int argc, char **argv) {
   if (argc > 4 && !strcmp(argv[1], "held")) {
     /* the box [0,2)x[0,2) holds cells at (0,0) and (1,1) and two empty sites; the shapes of NCELLS cells
        that agree with it should turn up equally often (count them with analysis/held_count.py) */
-    int m = atoi(argv[2]); long long moves = atoll(argv[3]); seed(2, atoi(argv[4]));
+    int m = atoi(argv[2]), thin = argc > 5 ? atoi(argv[5]) : 10; long long moves = atoll(argv[3]); seed(2, atoi(argv[4]));
     static const int px[7] = {0, -1, -1, -1, 0, 1, 1}, py[7] = {0, 0, 1, 2, 2, 2, 1};
     for (int i = 0; i < 7; i++) { X[i] = px[i]; Y[i] = py[i]; } place(7); hold(0, 0, 2, 2, 1); pad(m);
     enum { H = 1 << 22 }; static unsigned long long keyv[H]; static unsigned cnt[H]; unsigned long long samples = 0; int shapes = 0;
     for (long long t = 0; t < moves; t++) {
       run(1);
-      if (t % (10 * m)) continue;
+      if (t % ((long long)thin * m)) continue;
+      unsigned long long h = 0; for (int i = 0; i < n; i++) { unsigned long long c = (unsigned long long)(X[i] + 32) * 64 + (Y[i] + 32); c = (c + 1) * 0x9e3779b97f4a7c15ULL; c ^= c >> 29; c *= 0xbf58476d1ce4e5b9ULL; h += c ^ (c >> 32); }
+      unsigned s = (unsigned)(h % H); while (cnt[s] && keyv[s] != h) s = (s + 1) % H;
+      if (!cnt[s]) { keyv[s] = h; shapes++; } cnt[s]++; samples++;
+    }
+    double e = (double)samples / shapes, chi2 = 0; for (int s = 0; s < H; s++) if (cnt[s]) chi2 += (cnt[s] - e) * (cnt[s] - e) / e;
+    printf("n=%d shapes=%d samples=%llu chi2=%.1f dof=%d; relocations accepted %.4f, transplants %.4f\n", m, shapes, samples, chi2, shapes - 1, stat(1) / stat(0), stat(3) / stat(2));
+    return 0;
+  }
+  if (argc > 4 && !strcmp(argv[1], "cut")) {
+    /* the box [0,2)x[0,1) holds two cells that touch but are of different parts, so the rest must join them:
+       the shapes of NCELLS cells that do should turn up equally often (count them with analysis/held_count.py cut) */
+    int m = atoi(argv[2]), thin = argc > 5 ? atoi(argv[5]) : 100; long long moves = atoll(argv[3]); seed(3, atoi(argv[4]));
+    static const int px[6] = {0, 1, 0, 0, 1, 1}, py[6] = {0, 0, 1, 2, 2, 1};
+    for (int i = 0; i < 6; i++) { X[i] = px[i]; Y[i] = py[i]; } place(6); plab[0] = 1; plab[1] = 2; parts(1); hold(0, 0, 2, 1, 1); pad(m);
+    enum { H = 1 << 22 }; static unsigned long long keyv[H]; static unsigned cnt[H]; unsigned long long samples = 0; int shapes = 0;
+    for (long long t = 0; t < moves; t++) {
+      run(1);
+      if (t % ((long long)thin * m)) continue;
       unsigned long long h = 0; for (int i = 0; i < n; i++) { unsigned long long c = (unsigned long long)(X[i] + 32) * 64 + (Y[i] + 32); c = (c + 1) * 0x9e3779b97f4a7c15ULL; c ^= c >> 29; c *= 0xbf58476d1ce4e5b9ULL; h += c ^ (c >> 32); }
       unsigned s = (unsigned)(h % H); while (cnt[s] && keyv[s] != h) s = (s + 1) % H;
       if (!cnt[s]) { keyv[s] = h; shapes++; } cnt[s]++; samples++;
@@ -417,6 +549,6 @@ int main(int argc, char **argv) {
     f = fopen(argv[3], "wb"); fwrite(&n, 4, 1, f); for (int i = 0; i < n; i++) { fwrite(&X[i], 4, 1, f); fwrite(&Y[i], 4, 1, f); } fclose(f);
     return 0;
   }
-  fprintf(stderr, "usage: outward_native exact NCELLS MOVES SEED | held NCELLS MOVES SEED | step IN OUT N S TC B SEED\n"); return 1;
+  fprintf(stderr, "usage: outward_native exact NCELLS MOVES SEED [THIN] | held NCELLS MOVES SEED [THIN] | cut NCELLS MOVES SEED [THIN] | step IN OUT N S TC B SEED\n"); return 1;
 }
 #endif

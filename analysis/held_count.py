@@ -2,6 +2,8 @@
 the shapes `outward_native held n ...` can visit, each of which it should visit equally often.
 
     python3 analysis/held_count.py 9 10 12 13
+    python3 analysis/held_count.py cut 6 8 10      # for `outward_native cut`: shapes that contain (0,0) and (1,0)
+                                                   # and are in one piece even if those two do not count as joined
 
 Every fixed polyomino is listed once (Redelmeier's method) and counted once for each of its
 cells c with c + (1,1) in it and c + (1,0), c + (0,1) not.
@@ -13,7 +15,7 @@ import sys
 sys.setrecursionlimit(10000)
 
 
-def count(n):
+def count(n, cutmode=False):
     total = 0
     cells = set()
     seen = set()
@@ -21,8 +23,19 @@ def count(n):
     def ok(c):
         return c[1] > 0 or (c[1] == 0 and c[0] >= 0)
 
+    def joined_without(a, b):
+        """is the shape still in one piece if cells a and b, which touch, do not count as joined?"""
+        seen_ = {a}; st = [a]
+        while st:
+            c = st.pop()
+            for d in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                e = (c[0] + d[0], c[1] + d[1])
+                if e in cells and e not in seen_ and {c, e} != {a, b}: seen_.add(e); st.append(e)
+        return len(seen_) == len(cells)
+
     def tally():
         t = 0
+        if cutmode: return sum(1 for (x, y) in cells if (x + 1, y) in cells and joined_without((x, y), (x + 1, y)))
         for (x, y) in cells:
             if (x + 1, y + 1) in cells and (x + 1, y) not in cells and (x, y + 1) not in cells:
                 t += 1
@@ -54,5 +67,6 @@ def count(n):
 
 
 if __name__ == "__main__":
-    for a in sys.argv[1:]:
-        print(a, count(int(a)), flush=True)
+    cutmode = len(sys.argv) > 1 and sys.argv[1] == "cut"
+    for a in sys.argv[2 if cutmode else 1:]:
+        print(a, count(int(a), cutmode), flush=True)
