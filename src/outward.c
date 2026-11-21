@@ -36,14 +36,14 @@ static unsigned char lab[NMAX];
 static int Q[5][NMAX], qn[5], qh[5], par[5], imgi[5];
 static int Bl[NW], nxb[NW], nyb[NW], pendList[NW];
 static int frz, fx0, fy0, fx1, fy1;
-static unsigned char *tubeMap; static int tubeOn, coverOn, orOn, tubeR = 1 << 30; static double zmul = 1.0; /* the local walk after halving may be kept to where the finer shape was (bit 1) or next to it (bit 2) */
+static unsigned char *tubeMap; static int tubeOn, coverOn; static double zmul = 1.0; /* the local walk after halving may be kept to where the finer shape was (bit 1) or next to it (bit 2) */
 static int OX[NW], OY[NW], nO;
 static int plab[NMAX], cutOn, labmax, lab0, boxOnly;                   /* which part of the finer shape a held cell belongs to; two held cells of different parts that touch are not joined */
 static int nfix, regOn, rin, rout;            /* the local walk: cells below nfix stay; cells are added only at rin <= r < rout */
 static u64 rs[4];
 static const int DX[4] = {1, 0, -1, 0}, DY[4] = {0, 1, 0, -1};
 static const int G8[8][4] = {{1,0,0,1},{0,-1,1,0},{-1,0,0,-1},{0,1,-1,0},{1,0,0,-1},{0,1,1,0},{-1,0,0,1},{0,-1,-1,0}};
-static u64 nRel, accRel, nCP, accCP, nGC, accGC, lkOk, lkOther, lkEmpty, lkCells, lkWant0;
+static u64 nRel, accRel, nCP, accCP, nGC, accGC;
 
 static inline u64 rotl(u64 x, int k) { return (x << k) | (x >> (64 - k)); }
 static inline u64 rnext(void) {
@@ -58,7 +58,7 @@ static inline int occ(int x, int y) { return grid[at(x, y)]; }
 static inline int held(int x, int y) { return x >= fx0 && x < fx1 && y >= fy0 && y < fy1; }
 static inline int find(int a) { while (par[a] != a) a = par[a] = par[par[a]]; return a; }
 static inline int iabs(int a) { return a < 0 ? -a : a; }
-static inline int cut(int j, int k) { return (cutOn & 1) && plab[j] != plab[k] && plab[j] && plab[k]; }   /* modes 1, 3, 5 */
+static inline int cut(int j, int k) { return (cutOn & 1) && plab[j] != plab[k] && plab[j] && plab[k]; }
 
 void seed(u32 a, u32 b) {
   u64 x = ((u64)a << 32) | b;
@@ -85,12 +85,13 @@ void place(int m) {
   nfix = 0; regOn = 0; frz = 0; tubeOn = 0; coverOn = 0; zmul = 1.0; cutOn = 0;
   for (int i = 0; i < NMAX; i++) plab[i] = 0;
 }
-/* part labels, one per cell (write them after place(); 0 for a cell with none), and whether the sampler and the walk heed
-   them (1); or the walk only keeps them up, a new cell in the box taking the label of a cell it touches (2); or as 1, and
-   besides no cell is added in the box unless it touches a labelled one (3); or touching counts as joined as usual, but
-   no new cell in the box may touch two of the labels there were at the start, and one that touches none of them gets
-   one new label, the same for all (4); or as 3, and besides no cell of the box is taken away if that would leave what it
-   touched in the box no longer joined inside the box (5) */
+/* Part labels, one per cell (write them after place(); 0 for a cell with none), and how they are heeded:
+   1  two cells of the held box that touch are joined only if their labels are the same (the sampler; and the walk, in
+      which a new cell in the box takes the label of what it touches there and may not touch two);
+   5  as 1 for the walk that thins a halved world, and besides no cell is added in the box unless it touches a labelled
+      one, and none is taken away if what it touched in the box would no longer be joined inside the box;
+   4  for the walk on a picture: touching counts as joined as usual, but no new cell in the box may touch two of the
+      labels there were at the start, and one that touches none of them gets one new label, the same for all. */
 int *partlabels(void) { return plab; }
 void parts(int on) { cutOn = on; labmax = 0; if (on) for (int i = 0; i < n; i++) if (plab[i] > labmax) labmax = plab[i]; lab0 = labmax; }
 /* distance from the root in the sense used throughout: the root's own site is 0, and so are the three sites up and right of it at -1 */
@@ -299,24 +300,15 @@ int coarsen(void) {
 }
 /* after coarsen(): the local walk adds cells only where the finer shape had cells (1), or there and at the
    sites round them (3); 0 lifts the rule */
-void tube(int mode) { tubeOn = mode; tubeR = 1 << 30; }
-/* For part of a picture: the walk never takes a cell away if that would leave one of the sites where cells
-   k0 <= k < k1 now are (already placed) with no cell on it or round it.  Call with k0 = k1 to lift the rule. */
-void shade(int k0, int k1) {
-  for (int i = 0; i < nO; i++) for (int a = -1; a <= 1; a++) for (int c = -1; c <= 1; c++) tubeMap[at(OX[i] + a, OY[i] + c)] = 0;
-  nO = 0; tubeOn = 0; coverOn = 0; orOn = 0; tubeR = 1 << 30;
-  if (k1 <= k0 || k1 - k0 > NW) return;
-  for (int i = k0; i < k1; i++) { OX[nO] = X[i]; OY[nO] = Y[i]; nO++; tubeMap[at(X[i], Y[i])] |= 1; }
-  coverOn = 1;
-}
+void tube(int mode) { tubeOn = mode; }
 /* with cover on, the walk also never takes a cell away if that would leave a site where the finer shape had cells with
    no cell on it or round it; w multiplies the weight of a cell (to make up for the room the rule takes away) */
-void shadow(int cover, double w) { coverOn = cover; zmul = w; orOn = cover; }
+void shadow(int cover, double w) { coverOn = cover; zmul = w; }
 enum { OB = 64 }; static int orLab[OB * OB];  /* for the sites of the box: the label of the finer shape's part there after halving */
 int *orlabels(void) { return orLab; }
 static int covered(int qx, int qy, int ex) {
   int want = 0;                                 /* in the box, a part's place must be kept by that part */
-  if (orOn && cutOn && held(qx, qy) && fx1 - fx0 <= OB) want = orLab[(qy - fy0) * (fx1 - fx0) + (qx - fx0)];
+  if (cutOn && held(qx, qy) && fx1 - fx0 <= OB) want = orLab[(qy - fy0) * (fx1 - fx0) + (qx - fx0)];
   for (int a = -1; a <= 1; a++) for (int b = -1; b <= 1; b++) { int o = occ(qx + a, qy + b); if (o && o - 1 != ex && (!want || plab[o - 1] == want)) return 1; }
   return 0;
 }
@@ -330,7 +322,7 @@ static void gcMove(void) {
     int sx = cx + DX[r], sy = cy + DY[r];
     if (occ(sx, sy) || n >= NMAX) return;
     if (regOn) { int r0 = rad(sx, sy); if (r0 < rin || r0 >= rout) return; }
-    if (tubeOn && rad(sx, sy) < tubeR && !(tubeMap[at(sx, sy)] & tubeOn)) return;
+    if (tubeOn && !(tubeMap[at(sx, sy)] & tubeOn)) return;
     int k = 0; for (int e = 0; e < 4; e++) if (occ(sx + DX[e], sy + DY[e])) k++;
     if (k > 1 && rbelow(k) != 0) return;
     double a = 4.0 * Z * n / (n + 1.0);
@@ -340,8 +332,8 @@ static void gcMove(void) {
       if (held(sx, sy)) {
         for (int e = 0; e < 4; e++) { int o = occ(sx + DX[e], sy + DY[e]); if (o && plab[o - 1]) {
           if (cutOn == 4 && plab[o - 1] > lab0) continue;
-          if (!nl) nl = plab[o - 1]; else if (nl != plab[o - 1] && cutOn != 2) return; } }
-        if (!nl) { if (cutOn == 3 || cutOn == 5) return; nl = cutOn == 4 ? lab0 + 1 : labmax + 1; }
+          if (!nl) nl = plab[o - 1]; else if (nl != plab[o - 1]) return; } }
+        if (!nl) { if (cutOn == 5) return; nl = cutOn == 4 ? lab0 + 1 : labmax + 1; }
       }
     }
     if (!connAt(sx, sy, -1, drawK(256))) return;
@@ -437,12 +429,10 @@ int link(int ox, int oy, int dx, int dy, int b, int reach, int want) {
   for (int t = 0; t < 2; t++) {            /* the two sites that face the four cells */
     int x = dx ? cx : cx + t, y = dy ? cy : cy + t, o = occ(x, y);
     if (rad(x, y) >= b) continue;
-    if (o && (!want || plab[o - 1] == want)) { lkOk++; return 0; }
-    if (!o) lkEmpty++;
+    if (o && (!want || plab[o - 1] == want)) return 0;
     int k = (y - cy + R) * S + (x - cx + R); seen[k] = tick; from[k] = -1; qx[m] = x; qy[m] = y; m++;
   }
-  if (!want) lkWant0++;
-  int depth = 1, levelEnd = m, metOther = 0;
+  int depth = 1, levelEnd = m;
   while (h < m) {                          /* the search may pass through cells that are there; only empty sites get filled */
     if (h == levelEnd) { depth++; levelEnd = m; if (depth > reach) break; }
     int x = qx[h], y = qy[h], k = (y - cy + R) * S + (x - cx + R); h++;
@@ -459,9 +449,8 @@ int link(int ox, int oy, int dx, int dy, int b, int reach, int want) {
           plab[n] = want;
           X[n] = px; Y[n] = py; grid[at(px, py)] = n + 1; n++; added++;
         }
-        lkCells += added; if (metOther) lkOther++; return added;
+        return added;
       }
-      if (o) metOther = 1;
       int j = (ay - cy + R) * S + (ax - cx + R); if (seen[j] == tick) continue;
       seen[j] = tick; from[j] = k; qx[m] = ax; qy[m] = ay; m++;
     }
@@ -474,7 +463,7 @@ int add(int x, int y, int lab_) {
   plab[n] = lab_; X[n] = x; Y[n] = y; grid[at(x, y)] = n + 1; n++; return 1;
 }
 /* acceptance counts, for checking against src/manyomino.cpp: 0 relocations tried, 1 accepted, 2 transplants tried, 3 accepted, 4 local tried, 5 accepted */
-double stat(int which) { u64 v[11] = {nRel, accRel, nCP, accCP, nGC, accGC, lkOk, lkOther, lkEmpty, lkCells, lkWant0}; return (double)v[which]; }
+double stat(int which) { u64 v[6] = {nRel, accRel, nCP, accCP, nGC, accGC}; return (double)v[which]; }
 
 #ifdef NATIVE
 #include <stdio.h>

@@ -12,7 +12,8 @@ import sys, os, json, subprocess
 import numpy as np
 from multiprocessing import Pool
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ext_test import RINGS, ROOT
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+RINGS = [1, 1.5, 2, 2.5, 3, 4, 6, 8]           # ring edges, in units of the box half-width
 
 S_AT = [int(v) for v in os.environ.get("S_AT", "25 50 100 200 400 800 1600").split()]
 MODES = [int(v) for v in os.environ.get("MODES", "0 1").split()]

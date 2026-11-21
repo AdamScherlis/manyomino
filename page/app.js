@@ -82,7 +82,7 @@
 precision highp float; precision highp sampler2DArray;
 uniform sampler2DArray u_tex; uniform sampler2D u_lut;
 uniform vec4 u_lv[${MAXDRAW}];        // screen centre in the level's cells (x, y), cells per device pixel, opacity
-uniform vec4 u_meta[${MAXDRAW}];      // texture layer, brightness, whether the level thins out towards its edge
+uniform vec4 u_meta[${MAXDRAW}];      // texture layer, brightness, whether the level thins out towards its edge, how far out the level is used (1 = to its edge)
 uniform int u_n; uniform vec2 u_res; uniform float u_G, u_line; uniform vec3 u_bg, u_ink, u_mark;
 out vec4 o;
 void main() {
@@ -92,8 +92,8 @@ void main() {
     if (i >= u_n) break;
     float z = u_lv[i].z; vec2 c = u_lv[i].xy + d * z, uv = c / u_G;
     float r = 2.0 * max(abs(uv.x - 0.5), abs(uv.y - 0.5));
-    float m = (1.0 - smoothstep(${F0.toFixed(4)}, ${F1.toFixed(4)}, r)) * u_lv[i].w;
-    edge = max(edge, u_lv[i].w * (1.0 - smoothstep(0.6, 1.4, abs(r - 1.0) * u_G / (2.0 * z))));     // a line one pixel wide round the level
+    float f = u_meta[i].w, m = (1.0 - smoothstep(f - ${(F1 - F0).toFixed(4)}, f, r)) * u_lv[i].w;
+    edge = max(edge, u_lv[i].w * (1.0 - smoothstep(0.6, 1.4, abs(r - f) * u_G / (2.0 * z))));     // a line one pixel wide where the level hands over
     if (z < 1.0) { vec2 fl = floor(c - 0.5); c = fl + 0.5 + clamp((c - 0.5 - fl - 0.5) / z + 0.5, 0.0, 1.0); }   // cells larger than a pixel keep sharp edges
     float cov = textureGrad(u_tex, vec3(c / u_G, u_meta[i].x), vec2(z / u_G, 0.0), vec2(0.0, z / u_G)).r;
     float gf = mix(1.0, textureLod(u_lut, vec2(r, 0.5), 0.0).r, u_meta[i].z);
@@ -132,7 +132,7 @@ void main() {
       if (cv.width !== V) cv.width = cv.height = V;
       if (gl) {
         const lv = new Float32Array(4 * MAXDRAW), meta = new Float32Array(4 * MAXDRAW), lin = c => c.map(v => Math.pow(v / 255, 2.2));
-        list.slice(0, MAXDRAW).forEach((e, i) => { lv.set([e.x, e.y, 1 / (e.p * dpr), e.a], 4 * i); meta.set([e.slot, Math.min(12, Z0.gain * Math.pow(Math.min(1, e.q || e.p), -DIM)), e.taper, 0], 4 * i); });
+        list.slice(0, MAXDRAW).forEach((e, i) => { lv.set([e.x, e.y, 1 / (e.p * dpr), e.a], 4 * i); meta.set([e.slot, Math.min(12, Z0.gain * Math.pow(Math.min(1, e.q || e.p), -DIM)), e.taper, e.f || F1], 4 * i); });
         gl.viewport(0, 0, V, V); gl.uniform4fv(U.u_lv, lv); gl.uniform4fv(U.u_meta, meta); gl.uniform1i(U.u_n, Math.min(MAXDRAW, list.length)); gl.uniform2f(U.u_res, V, V);
         gl.uniform3fv(U.u_bg, lin(hexRGB('--plate', '0D0F16'))); gl.uniform3fv(U.u_ink, lin(hexRGB('--plate-ink', 'E9EBF2')));
         gl.uniform1f(U.u_line, lines); gl.uniform3fv(U.u_mark, lin(hexRGB('--acc', 'E0A040'))); gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -140,9 +140,11 @@ void main() {
         ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, V, V); ctx.imageSmoothingQuality = 'high';
         for (let i = list.length - 1; i >= 0; i--) {                             // coarsest first; a finer level replaces what is under its window
           const e = list[i], q = e.p * dpr, x = V / 2 - e.x * q, y = V / 2 - e.y * q;
-          if (i < list.length - 1) ctx.clearRect(x + q, y + q, (G - 2) * q, (G - 2) * q);
-          ctx.imageSmoothingEnabled = q < 3; ctx.globalAlpha = e.a; ctx.drawImage(slots[e.slot], x, y, G * q, G * q);
-          if (lines) { ctx.globalAlpha = 0.7 * e.a; ctx.strokeStyle = css('--acc') || '#E0A040'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, G * q - 1, G * q - 1); }
+          const f = e.f || 1, m = (1 - f) * G * q / 2;                             // the level is used out to f of the way to its edge
+          if (i < list.length - 1) ctx.clearRect(x + m + q, y + m + q, (G - 2) * q - 2 * m, (G - 2) * q - 2 * m);
+          ctx.save(); ctx.beginPath(); ctx.rect(x + m, y + m, G * q - 2 * m, G * q - 2 * m); ctx.clip();
+          ctx.imageSmoothingEnabled = q < 3; ctx.globalAlpha = e.a; ctx.drawImage(slots[e.slot], x, y, G * q, G * q); ctx.restore();
+          if (lines) { ctx.globalAlpha = 0.7 * e.a; ctx.strokeStyle = css('--acc') || '#E0A040'; ctx.lineWidth = 1; ctx.strokeRect(x + m + 0.5, y + m + 0.5, G * q - 2 * m - 1, G * q - 2 * m - 1); }
         }
         ctx.globalAlpha = 1;
       }
@@ -274,7 +276,7 @@ void main() {
   }
   (function () {
     const Z0 = DATA.zoom, cv = $('zout-canvas'); if (!Z0 || !cv || typeof OUT_WASM === 'undefined') return;
-    const LAYERS = 12, NV = NestView(cv, cv.clientWidth <= 420 ? 1024 : 2048, LAYERS, 8, Z0, { fade0: 0.975, fade1: 0.992 }), G = NV.G, C = G / 2;
+    const LAYERS = 12, NV = NestView(cv, cv.clientWidth <= 420 ? 1024 : 2048, LAYERS, 8, Z0, { fade0: 0.99, fade1: 1.0 }), G = NV.G, C = G / 2;
     const J = Math.round(Math.log2(G / (4 * OUT.B))), HALF = 2 * OUT.B, PCELL = 20, MINWIN = 8;     // a level reaches HALF of its own cells from the root; px per real cell at the start
     const wasmBytes = () => { const b = atob(OUT_WASM), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
     const src = 'const OUT=' + JSON.stringify(OUT) + ';const outRad=' + outRad + ';' + Outgoer + ';let E=null,O=null;const B64="' + OUT_WASM + '";' +
@@ -283,6 +285,8 @@ void main() {
     let poly = null, have = 0, shown = -1, pend = {}, born = {}, s = 0, running = false, userPaused = false, raf = 0, last = 0, seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0;
     let worker = null, useWorker = true, busy = false, job = 0, sent = 0, E = null, O = null, loading = false, failed = false, cells = null, perLevel = 0;
     const view = () => Math.max(240, cv.clientWidth);
+    // The next level reworks a strip OUT.COLLAR cells deep inside the seam, at its finest stage that is not finer than real cells.  A level is drawn out to there.
+    const used = j => 1 - OUT.COLLAR / (OUT.B * Math.pow(2, Math.min(j + 1, J)));
     const need = () => s + Math.log2(0.71 * view() / (PCELL * HALF));                 // the level (not rounded) whose picture just covers the view
     const cover = () => Math.max(0, Math.ceil(need()));
     function dropWorker(forGood) { if (worker) worker.terminate(); worker = null; busy = false; job++; if (forGood) useWorker = false; }
@@ -315,7 +319,7 @@ void main() {
       for (let j = shown + 1; j < have && j <= cover() + 2; j++) { NV.show(pend[j], j % LAYERS); delete pend[j]; born[j] = j <= cover() && running && j > 0 ? now : -1e9; shown = j; break; }
       NV.lines = $('zout-lines') && $('zout-lines').checked;
       const px = PCELL * Math.pow(2, -s), lo = Math.max(0, Math.ceil(Math.log2(MINWIN / (2 * HALF * px))));
-      for (let j = lo; j <= Math.min(shown, cover()) && N.length < 8; j++) { const c = C + 0.5 * Math.pow(2, J - j); N.push({ slot: j % LAYERS, x: c, y: c, p: px * Math.pow(2, j - J), q: px * Math.pow(2, Math.max(0, j - J)), a: Math.min(1, (now - born[j]) / 500), taper: 0 }); }
+      for (let j = lo; j <= Math.min(shown, cover()) && N.length < 8; j++) { const c = C + 0.5 * Math.pow(2, J - j); N.push({ slot: j % LAYERS, x: c, y: c, p: px * Math.pow(2, j - J), q: px * Math.pow(2, Math.max(0, j - J)), a: Math.min(1, (now - born[j]) / 500), taper: 0, f: used(j) }); }
       NV.draw(N);
       const across = V / PCELL * Math.pow(2, s), wait = shown < Math.min(cover(), 1);
       $('zout-readout').innerHTML = failed ? 'this browser could not run the sampler' : !poly ? 'waiting for the sample…' : wait ? 'making the surroundings…' : s < 0.05 ? 'one square is <b>' + PCELL + '</b> pixels' :

@@ -15,7 +15,16 @@
 // four).  Coordinates put the root at the origin; r is max(|x|, |y|) with -1 folded onto 0, so
 // r < R is the square of side 2R about the root.
 
-const OUT = { B: 8, N: 16000, S: 100, TC: 16, RULE: 3, COVER: 1, W: 0.65, PARTS: 5, T: 16, REACH: 32, COLLAR: 4, SHADE: 0, STAGECUT: 4, NEAR: 2, CARRY: 1, TINY: 3, T1: 32 };
+// B     half-width of the held box, in cells of the world          N     cells in a world
+// S     moves of the sampler per cell                              TC    sweeps of the walk that thins a halved world
+// RULE  3: that walk adds cells only on or next to the halved shape   COVER 1: and leaves none of its sites bare
+// W     weight of a cell in that walk, times 1/lambda             PARTS 5: parts of the finer world are kept apart in the box (0: not)
+// TINY  a part of this many cells or fewer is merged with what it touches
+// T     sweeps of the walk at each stage of a picture; T1 at the first stage, halving from there down to T
+// COLLAR  depth of the strip inside the seam that the walk may rework
+// NEAR  a join this short is made wherever ring and inside have come apart; REACH the longest join, made only if needed
+// CARRY 1: a strand grown in over the seam stays with the ring if it is all that joins two things
+const OUT = { B: 8, N: 16000, S: 100, TC: 16, RULE: 3, COVER: 1, W: 0.65, PARTS: 5, TINY: 3, T: 16, T1: 32, COLLAR: 4, NEAR: 2, REACH: 32, CARRY: 1 };
 const outRad = (x, y) => { const a = x < 0 ? -x - 1 : x, b = y < 0 ? -y - 1 : y; return a > b ? a : b; };
 
 // E: the engine's exports (after E.init); o: { J, seed, and any of OUT's fields }
@@ -158,12 +167,10 @@ function Outgoer(E, o) {
       for (let i = 0; i < r2.x.length; i++) if (held.has(key(r2.x[i], r2.y[i]))) { X_.push(r2.x[i]); Y_.push(r2.y[i]); L_.push(0); }
       nfix = X_.length;
       for (let i = 0; i < fine.x.length; i++) if (outRad(fine.x[i], fine.y[i]) >= b - P.COLLAR) { X_.push(fine.x[i]); Y_.push(fine.y[i]); L_.push(fineLab[i]); }
-      const ncol = X_.length - nfix, zone = 2 * b - 2 * P.COLLAR - 2; let nzone = 0;      // then the ring's cells near its outer edge, then the rest
-      for (let i = 0; i < r2.x.length; i++) if (!held.has(key(r2.x[i], r2.y[i])) && outRad(r2.x[i], r2.y[i]) >= zone) { X_.push(r2.x[i]); Y_.push(r2.y[i]); L_.push(0); nzone++; }
-      for (let i = 0; i < r2.x.length; i++) if (!held.has(key(r2.x[i], r2.y[i])) && outRad(r2.x[i], r2.y[i]) < zone) { X_.push(r2.x[i]); Y_.push(r2.y[i]); L_.push(0); }
+      for (let i = 0; i < r2.x.length; i++) if (!held.has(key(r2.x[i], r2.y[i]))) { X_.push(r2.x[i]); Y_.push(r2.y[i]); L_.push(0); }
       E.clear(); put(0, X_, Y_); E.place(X_.length);
       for (let i = 0; i < L_.length; i++) if (L_[i] > maxLab) maxLab = L_[i];
-      new Int32Array(E.memory.buffer, E.partlabels(), L_.length).set(L_); E.hold(-b, -b, b, b, 1); E.parts(P.STAGECUT);
+      new Int32Array(E.memory.buffer, E.partlabels(), L_.length).set(L_); E.hold(-b, -b, b, b, 1); E.parts(4);
       // Joins.  Pieces of the finer picture that carry one label (they stand for one part of the world) are joined to
       // each other by the shortest way through empty sites.  Then every place where the ring touched the inside gets
       // a short join if it has come apart; a longer one is made only where the ring's cell and the piece it touched
@@ -192,9 +199,7 @@ function Outgoer(E, o) {
           const a = E.link(touch[k], touch[k + 1], touch[k + 2], touch[k + 3], b, reach, want);
           if (a >= 0) { info.links += a; up[find(cR)] = find(cI); } else if (reach === P.REACH) info.unjoined++;
         } }
-      // near both seams no place where there is a cell now may be left bare: the next stage must find its cells where this one has them
-      if (P.SHADE) E.shade(nfix, nfix + ncol + nzone);
-      E.pin(nfix, b - P.COLLAR, 2 * b); for (let q = 4 * Math.max(P.T, P.T1 >> (j - 1)); q > 0; q--) { E.relax(1); yield; } if (P.SHADE) E.shade(0, 0);
+      E.pin(nfix, b - P.COLLAR, 2 * b); for (let q = 4 * Math.max(P.T, P.T1 >> (j - 1)); q > 0; q--) { E.relax(1); yield; }
       const got = get(0, E.count()), gl = new Int32Array(E.memory.buffer, E.partlabels(), E.count()); st.push(got); E.parts(0);
       // The ring from here on is what lies outside the seam.  A strand of it that grew in over the seam (its label is the
       // new one) is left behind with the inside, unless it is all that joins two things: two parts of the ring, or the
