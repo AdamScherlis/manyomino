@@ -291,8 +291,7 @@ struct Sampler {
 
   // -freeze x0 y0 x1 y1: cells with x0 <= x < x1, y0 <= y < y1 are never moved and no cell is ever put
   // there, so the chain samples uniformly from the polyominoes that agree with the start inside the box.
-  // (Both moves refuse symmetrically, so each stays reversible.  Use with -refCP 1: the fast transplant
-  // does not know about the box.)
+  // (Both moves refuse symmetrically, so each stays reversible.)
   bool frz = false; int fx0 = 0, fy0 = 0, fx1 = 0, fy1 = 0;
   inline bool held(int x, int y) const { return x >= fx0 && x < fx1 && y >= fy0 && y < fy1; }
 
@@ -538,6 +537,7 @@ struct Sampler {
     for (size_t i = 0; i < bsz; i++) {
       int j = B[i]; int dx = X[j] - cx, dy = Y[j] - cy;
       nx[i] = ax + M[0] * dx + M[1] * dy; ny[i] = ay + M[2] * dx + M[3] * dy;
+      if (frz && (held(X[j], Y[j]) || held(nx[i], ny[i]))) return false;   // no cell of the branch may come from or land in the held box
     }
     auto apply = [&]() {
       for (int j : B) clearCell(X[j], Y[j]);
@@ -752,7 +752,7 @@ int main(int argc, char **argv) {
   if (p > 0) S.logq = std::log(1.0 - p);
   if (smax >= 0) S.smax = std::min(smax, (n - 1) / 2);
   S.relK = relK; S.relA = relA; S.refCP = refCP; S.revTest = revtest;
-  if (frzOn) { S.frz = true; S.fx0 = frzBox[0]; S.fy0 = frzBox[1]; S.fx1 = frzBox[2]; S.fy1 = frzBox[3]; S.refCP = 1; }
+  if (frzOn) { S.frz = true; S.fx0 = frzBox[0]; S.fy0 = frzBox[1]; S.fx1 = frzBox[2]; S.fy1 = frzBox[3]; }
   u64 thr = (u64)(pcp * 18446744073709551615.0), thr2 = (u64)((pcp + ppv) * 18446744073709551615.0);
   auto step = [&]() { u64 r = S.rng.next(); if (r < thr) S.cutpaste(false); else if (r < thr2) S.cutpaste(true); else S.relocate(); };
 

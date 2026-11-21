@@ -67,7 +67,7 @@ def main():
         T = [None] + [read(os.path.join(ROOT, "zoomtest", "truth", f"{tag}_l{j}.bin")) for j in (1, 2, 3)]
         for _ in range(2):
             c1 = T[1][rng.integers(len(T[1]))]; c = [None, c1, c1 >> 1, c1 >> 2]
-            st = start_state(T[1], c1, B, N, rng)
+            st = start_state(os.path.join(ROOT, 'zoomtest', 'truth', f'{tag}_l1.bin'), c1, B, N, tmp)
             if st is None: continue
             Q = resample(st + c1, c1, B, S, tmp, int(rng.integers(1 << 30))); row = {"tag": tag, "truth": [], "gen": [], "inside": []}
             for j in (1, 2, 3):
