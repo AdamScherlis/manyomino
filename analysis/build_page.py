@@ -5,7 +5,7 @@
 Writes SITE_DIR/explain.html plus SITE_DIR/explain/* (figures and the hero sample), and
 optionally a body-only copy of the page for publishing as a standalone artifact.
 """
-import glob, json, math, os, re, sys, datetime
+import base64, glob, json, math, os, re, sys, datetime
 import numpy as np
 import summarize
 from poly import load_bin, neighbours, centre, bfs, render_box, encode_tree
@@ -235,7 +235,9 @@ def main():
         for k in list(r):
             if isinstance(r[k], float): r[k] = float(f"{r[k]:.7g}")
     js = "const DATA = " + json.dumps(slim, separators=(",", ":")) + ";\n"
-    for f in ("charts.js", "viewer.js", "sampler.js", "zoom.js", "app.js"):
+    wasm = os.path.join(PAGE, "outward.wasm")                 # the zoom-out engine (src/outward.c; scripts/make_outward.sh)
+    if os.path.exists(wasm): js += "const OUT_WASM = '" + base64.b64encode(open(wasm, "rb").read()).decode() + "';\n"
+    for f in ("charts.js", "viewer.js", "sampler.js", "zoom.js", "outward.js", "app.js"):
         js += open(os.path.join(PAGE, f)).read() + "\n"
     cssText = open(os.path.join(PAGE, "page.css")).read()
     title = "Manyomino"

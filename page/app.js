@@ -57,10 +57,9 @@
   // across the nest and steady in time.  Drawing is one WebGL2 shader, with a plain canvas
   // fallback; levels are made in a worker where the browser allows one.
   const DIM = 2 - 1 / 0.6412;                                    // ink per area goes as (cell size)^DIM
-  const zoomWorkerSrc = 'const ZOOM=' + JSON.stringify(ZOOM) + ';' + [zoomRate, zoomLimit, Refiner, orHalf, nearestCell, Outward].map(String).join(';') + ';' +
-    'let R=null,key=-1,O=null,top=null;onmessage=e=>{const m=e.data;' +
-    'if(m.cmd==="in"){if(!R||key!==m.seed){R=Refiner(m.G,m.seed,m.opts);key=m.seed;}R.start(m.pic,m.fx,m.fy);while(!R.step(1e9));const pic=R.result();postMessage({id:m.id,pic},[pic.buffer]);}' +
-    'else{if(m.F){O=Outward(m.G,m.seed,m.opts);top=m.F;}O.begin(top);let lv;while(!(lv=O.step(1e9)));top=lv[lv.length-1].slice();postMessage({id:m.id,pics:lv},lv.map(p=>p.buffer));}};';
+  const zoomWorkerSrc = 'const ZOOM=' + JSON.stringify(ZOOM) + ';' + [zoomRate, zoomLimit, Refiner].map(String).join(';') + ';' +
+    'let R=null,key=-1;onmessage=e=>{const m=e.data;' +
+    'if(!R||key!==m.seed){R=Refiner(m.G,m.seed,m.opts);key=m.seed;}R.start(m.pic,m.fx,m.fy);while(!R.step(1e9));const pic=R.result();postMessage({id:m.id,pic},[pic.buffer]);};';
   const hexRGB = (v, d) => { const m = /#?([0-9a-f]{6})/i.exec(css(v)) || [0, d], n = parseInt(m[1], 16); return [n >> 16, n >> 8 & 255, n & 255]; };
   const supDigits = n => String(n).split('').map(ch => '⁰¹²³⁴⁵⁶⁷⁸⁹'[+ch]).join('');
   const bigNum = v => v < 1e6 ? fmtNum(+v.toPrecision(2)) : (v / Math.pow(10, Math.floor(Math.log10(v)))).toFixed(1) + '×10' + supDigits(Math.floor(Math.log10(v)));
@@ -69,7 +68,8 @@
   // Draws a nest on a canvas.  show(pic, slot) takes a level's picture; draw(list) paints levels given
   // finest first as { slot, x, y (the screen centre in the level's cells), p (CSS px per cell), a (opacity),
   // taper (whether the level thins out towards its edge) }.
-  function NestView(cv, wantG, LAYERS, MAXDRAW, Z0) {
+  function NestView(cv, wantG, LAYERS, MAXDRAW, Z0, opt) {
+    const F0 = (opt && opt.fade0) || 0.985, F1 = (opt && opt.fade1) || 1.0; let lines = 0;
     let gl = null; try { gl = cv.getContext('webgl2', { alpha: false, antialias: false }); } catch (e) {}
     if (gl && (gl.getParameter(gl.MAX_TEXTURE_SIZE) < 2048 || gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) < LAYERS)) gl = null;
     const ctx = gl ? null : cv.getContext('2d'), G = gl ? wantG : 1024, slots = [];
@@ -83,27 +83,28 @@ precision highp float; precision highp sampler2DArray;
 uniform sampler2DArray u_tex; uniform sampler2D u_lut;
 uniform vec4 u_lv[${MAXDRAW}];        // screen centre in the level's cells (x, y), cells per device pixel, opacity
 uniform vec4 u_meta[${MAXDRAW}];      // texture layer, brightness, whether the level thins out towards its edge
-uniform int u_n; uniform vec2 u_res; uniform float u_G; uniform vec3 u_bg, u_ink;
+uniform int u_n; uniform vec2 u_res; uniform float u_G, u_line; uniform vec3 u_bg, u_ink, u_mark;
 out vec4 o;
 void main() {
   vec2 d = gl_FragCoord.xy - 0.5 * u_res; d.y = -d.y;
-  float lum = 0.0, rem = 1.0;
+  float lum = 0.0, rem = 1.0, edge = 0.0;
   for (int i = 0; i < ${MAXDRAW}; i++) {
     if (i >= u_n) break;
     float z = u_lv[i].z; vec2 c = u_lv[i].xy + d * z, uv = c / u_G;
     float r = 2.0 * max(abs(uv.x - 0.5), abs(uv.y - 0.5));
-    float m = (1.0 - smoothstep(0.985, 1.0, r)) * u_lv[i].w;
+    float m = (1.0 - smoothstep(${F0.toFixed(4)}, ${F1.toFixed(4)}, r)) * u_lv[i].w;
+    edge = max(edge, u_lv[i].w * (1.0 - smoothstep(0.6, 1.4, abs(r - 1.0) * u_G / (2.0 * z))));     // a line one pixel wide round the level
     if (z < 1.0) { vec2 fl = floor(c - 0.5); c = fl + 0.5 + clamp((c - 0.5 - fl - 0.5) / z + 0.5, 0.0, 1.0); }   // cells larger than a pixel keep sharp edges
     float cov = textureGrad(u_tex, vec3(c / u_G, u_meta[i].x), vec2(z / u_G, 0.0), vec2(0.0, z / u_G)).r;
     float gf = mix(1.0, textureLod(u_lut, vec2(r, 0.5), 0.0).r, u_meta[i].z);
     lum += rem * m * u_meta[i].y * gf * cov; rem *= 1.0 - m;
   }
-  o = vec4(pow(mix(u_bg, u_ink, clamp(lum, 0.0, 1.0)), vec3(1.0 / 2.2)), 1.0);
+  o = vec4(pow(mix(mix(u_bg, u_ink, clamp(lum, 0.0, 1.0)), u_mark, 0.7 * edge * u_line), vec3(1.0 / 2.2)), 1.0);
 }`));
       gl.linkProgram(prog);
       if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) console.error('zoom shader: ' + gl.getProgramInfoLog(prog));
       gl.useProgram(prog); gl.bindVertexArray(gl.createVertexArray());
-      U = {}; ['u_tex', 'u_lut', 'u_lv', 'u_meta', 'u_n', 'u_res', 'u_G', 'u_bg', 'u_ink'].forEach(nm => { U[nm] = gl.getUniformLocation(prog, nm); });
+      U = {}; ['u_tex', 'u_lut', 'u_lv', 'u_meta', 'u_n', 'u_res', 'u_G', 'u_bg', 'u_ink', 'u_line', 'u_mark'].forEach(nm => { U[nm] = gl.getUniformLocation(prog, nm); });
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D_ARRAY, gl.createTexture());
       gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 8, gl.R8, G, G, LAYERS);
@@ -131,20 +132,22 @@ void main() {
       if (cv.width !== V) cv.width = cv.height = V;
       if (gl) {
         const lv = new Float32Array(4 * MAXDRAW), meta = new Float32Array(4 * MAXDRAW), lin = c => c.map(v => Math.pow(v / 255, 2.2));
-        list.slice(0, MAXDRAW).forEach((e, i) => { lv.set([e.x, e.y, 1 / (e.p * dpr), e.a], 4 * i); meta.set([e.slot, Math.min(12, Z0.gain * Math.pow(Math.min(1, e.p), -DIM)), e.taper, 0], 4 * i); });
+        list.slice(0, MAXDRAW).forEach((e, i) => { lv.set([e.x, e.y, 1 / (e.p * dpr), e.a], 4 * i); meta.set([e.slot, Math.min(12, Z0.gain * Math.pow(Math.min(1, e.q || e.p), -DIM)), e.taper, 0], 4 * i); });
         gl.viewport(0, 0, V, V); gl.uniform4fv(U.u_lv, lv); gl.uniform4fv(U.u_meta, meta); gl.uniform1i(U.u_n, Math.min(MAXDRAW, list.length)); gl.uniform2f(U.u_res, V, V);
-        gl.uniform3fv(U.u_bg, lin(hexRGB('--plate', '0D0F16'))); gl.uniform3fv(U.u_ink, lin(hexRGB('--plate-ink', 'E9EBF2'))); gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.uniform3fv(U.u_bg, lin(hexRGB('--plate', '0D0F16'))); gl.uniform3fv(U.u_ink, lin(hexRGB('--plate-ink', 'E9EBF2')));
+        gl.uniform1f(U.u_line, lines); gl.uniform3fv(U.u_mark, lin(hexRGB('--acc', 'E0A040'))); gl.drawArrays(gl.TRIANGLES, 0, 3);
       } else {
         ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, V, V); ctx.imageSmoothingQuality = 'high';
         for (let i = list.length - 1; i >= 0; i--) {                             // coarsest first; a finer level replaces what is under its window
           const e = list[i], q = e.p * dpr, x = V / 2 - e.x * q, y = V / 2 - e.y * q;
           if (i < list.length - 1) ctx.clearRect(x + q, y + q, (G - 2) * q, (G - 2) * q);
           ctx.imageSmoothingEnabled = q < 3; ctx.globalAlpha = e.a; ctx.drawImage(slots[e.slot], x, y, G * q, G * q);
+          if (lines) { ctx.globalAlpha = 0.7 * e.a; ctx.strokeStyle = css('--acc') || '#E0A040'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, G * q - 1, G * q - 1); }
         }
         ctx.globalAlpha = 1;
       }
     }
-    return { G, gl: !!gl, show, draw };
+    return { G, gl: !!gl, show, draw, set lines(v) { lines = v ? 1 : 0; } };
   }
   // a worker that makes levels, or null where the browser will not have one; lost(w) is called if it dies
   function zoomWorker(onmessage, lost) {
@@ -256,62 +259,80 @@ void main() {
     window.__zoom = { get s() { return s; }, set s(v) { s = v; }, get levels() { return L.length; }, get worker() { return useWorker && !!worker; }, G, gl: NV.gl, draw, build, setRunning };
   })();
 
-  // ---- outward: level 0 is a window of real cells from the sample at the top of the page; each
-  // further level is twice as coarse and twice as wide, made in batches by Outward (page/zoom.js)
+  // ---- outward: level 0 is real cells from the sample at the top of the page, around one of its cells;
+  // each further level is twice as coarse and twice as wide, made by Outgoer (page/outward.js) in a worker
+  // The world to start from: the part of the sample around cell i that is joined to it within a window, nearest
+  // first, up to n0 cells, with cell i at the origin.  Null if some cell within `near` of it is not among them
+  // (it is joined to cell i only by a long way round, and another cell should be tried).
+  function heroWorld(poly, i, n0, near) {
+    const R = 320, W = 2 * R + 1, g = new Int32Array(W * W), X = poly.X, Y = poly.Y, cx = X[i], cy = Y[i]; let want = 0;
+    for (let k = 0; k < poly.n; k++) { const x = X[k] - cx, y = Y[k] - cy; if (x >= -R && x <= R && y >= -R && y <= R) { g[(y + R) * W + x + R] = 1; if (outRad(x, y) < near) want++; } }
+    const qx = new Int32Array(n0), qy = new Int32Array(n0); let h = 0, m = 0, got = 0; qx[m] = 0; qy[m++] = 0; g[R * W + R] = 2;
+    while (h < m) { const x = qx[h], y = qy[h++]; if (outRad(x, y) < near) got++;
+      for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) { const u = x + dx, v = y + dy; if (u < -R || v < -R || u > R || v > R || g[(v + R) * W + u + R] !== 1 || m >= n0) continue; g[(v + R) * W + u + R] = 2; qx[m] = u; qy[m++] = v; } }
+    return got === want ? { x: qx.slice(0, m), y: qy.slice(0, m) } : null;
+  }
   (function () {
-    const Z0 = DATA.zoom, cv = $('zout-canvas'); if (!Z0 || !cv) return;
-    const LAYERS = 12, NV = NestView(cv, cv.clientWidth <= 420 ? 1024 : 2048, LAYERS, 8, Z0), G = NV.G, C = G / 2;
-    const PCELL = 12, MINWIN = 8, opts = { sweeps: Z0.sweeps };              // px per real cell at the start; a level is dropped when its window is this small
+    const Z0 = DATA.zoom, cv = $('zout-canvas'); if (!Z0 || !cv || typeof OUT_WASM === 'undefined') return;
+    const LAYERS = 12, NV = NestView(cv, cv.clientWidth <= 420 ? 1024 : 2048, LAYERS, 8, Z0, { fade0: 0.975, fade1: 0.992 }), G = NV.G, C = G / 2;
+    const J = Math.round(Math.log2(G / (4 * OUT.B))), HALF = 2 * OUT.B, PCELL = 20, MINWIN = 8;     // a level reaches HALF of its own cells from the root; px per real cell at the start
+    const wasmBytes = () => { const b = atob(OUT_WASM), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+    const src = 'const OUT=' + JSON.stringify(OUT) + ';const outRad=' + outRad + ';' + Outgoer + ';let E=null,O=null;const B64="' + OUT_WASM + '";' +
+      'onmessage=e=>{const m=e.data;try{if(m.cells){if(!E){const b=atob(B64),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);E=new WebAssembly.Instance(new WebAssembly.Module(u),{}).exports;E.init(12);}' +
+      'O=Outgoer(E,{J:m.J,seed:m.seed});const p=O.begin(m.cells);postMessage({id:m.id,level:0,pic:p},[p.buffer]);}else{const p=O.next();postMessage({id:m.id,level:O.level,pic:p,ms:p.info.ms},[p.buffer]);}}catch(err){postMessage({id:m.id,error:String(err)});}};';
     let poly = null, have = 0, shown = -1, pend = {}, born = {}, s = 0, running = false, userPaused = false, raf = 0, last = 0, seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0;
-    let worker = null, useWorker = true, busy = false, job = 0, sent = 0, O = null, mainTop = null, started = false;
+    let worker = null, useWorker = true, busy = false, job = 0, sent = 0, E = null, O = null, loading = false, failed = false, cells = null, perLevel = 0;
     const view = () => Math.max(240, cv.clientWidth);
-    const cover = () => Math.max(0, Math.ceil(s - Math.log2(C * PCELL / (0.55 * view()))));     // the level whose window covers the view
+    const need = () => s + Math.log2(0.71 * view() / (PCELL * HALF));                 // the level (not rounded) whose picture just covers the view
+    const cover = () => Math.max(0, Math.ceil(need()));
     function dropWorker(forGood) { if (worker) worker.terminate(); worker = null; busy = false; job++; if (forGood) useWorker = false; }
-    function got(pics) { pics.forEach(p => { pend[have++] = p; }); mainTop = pics[pics.length - 1]; if (!running) draw(); }
+    function got(pic, ms) { pend[have++] = pic; if (ms) perLevel = perLevel ? 0.7 * perLevel + 0.3 * ms : ms; if (!running) draw(); }
     function reset() {
       if (!poly) return;
-      seed = (seed + 0x9E3779B9) >>> 0; if (worker) dropWorker(false); O = null; busy = false; started = false; pend = {}; born = {}; shown = -1; have = 0; s = 0;
-      // a root cell from the inner part of the sample, and the window of real cells around it
-      const n = poly.n, X = poly.X, Y = poly.Y, mx = (poly.x0 + poly.x1) / 2, my = (poly.y0 + poly.y1) / 2, reach = 0.2 * Math.max(poly.x1 - poly.x0, poly.y1 - poly.y0);
-      let i = 0; for (let t = 0; t < 200; t++) { i = (Math.random() * n) | 0; if (Math.abs(X[i] - mx) < reach && Math.abs(Y[i] - my) < reach) break; }
-      const F = new Uint8Array(G * G), rx = X[i] - C, ry = Y[i] - C;
-      for (let k = 0; k < n; k++) { const x = X[k] - rx, y = Y[k] - ry; if (x >= 0 && y >= 0 && x < G && y < G) F[x + y * G] = 255; }
-      pend[0] = F; have = 1; mainTop = F; draw();
+      seed = (seed + 0x9E3779B9) >>> 0; if (worker) dropWorker(false); O = null; busy = false; pend = {}; born = {}; shown = -1; have = 0; s = 0; cells = null;
+      const n = poly.n, X = poly.X, Y = poly.Y, mx = (poly.x0 + poly.x1) / 2, my = (poly.y0 + poly.y1) / 2, reach = 0.25 * Math.max(poly.x1 - poly.x0, poly.y1 - poly.y0);
+      for (let t = 0; t < 400 && !cells; t++) { const i = (Math.random() * n) | 0; if (Math.abs(X[i] - mx) < reach && Math.abs(Y[i] - my) < reach) cells = heroWorld(poly, i, OUT.N, 2 * HALF); }
+      if (!cells) { failed = true; return; }
+      build(); draw();
     }
-    // keep a batch of levels in hand beyond what the view needs
+    // keep a few levels in hand beyond what the view needs
     function build(ms) {
-      if (!have || have - 1 - cover() > 4) return;
+      if (!cells || failed || have - 1 - cover() > 3) return;
       if (useWorker) {
-        if (busy) { if (performance.now() - sent > 60000) dropWorker(true); return; }
-        if (!worker) { worker = zoomWorker(e => { if (e.data.id !== job) return; busy = false; got(e.data.pics); }, () => dropWorker(true)); started = false; }
-        if (worker) { busy = true; sent = performance.now(); worker.postMessage(started ? { cmd: 'out', id: ++job } : { cmd: 'out', id: ++job, G, seed, opts, F: mainTop }); started = true; return; }
-        useWorker = false;
+        if (busy) { if (performance.now() - sent > 120000) dropWorker(true); return; }
+        if (!worker) { try { worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' }))); } catch (e) { worker = null; useWorker = false; }
+          if (worker) { worker.onmessage = e => { if (e.data.id !== job) return; busy = false; if (e.data.error) { dropWorker(true); return; } got(e.data.pic, e.data.ms); }; worker.onerror = () => dropWorker(true); } }
+        if (worker) { busy = true; sent = performance.now(); worker.postMessage(have ? { id: ++job } : { id: ++job, cells, J, seed }); return; }
       }
-      if (!O) { O = Outward(G, seed, opts); O.begin(mainTop); }
-      const r = O.step(ms); if (r) { got(r); O.begin(mainTop); }
+      // no worker: the engine on this thread, a little each frame
+      if (!E) { if (!loading) { loading = true; WebAssembly.instantiate(wasmBytes(), {}).then(r => { E = r.instance.exports; E.init(12); loading = false; }, () => { failed = true; }); } return; }
+      if (!O) { O = Outgoer(E, { J, seed }); got(O.begin(cells)); return; }
+      const p = O.step(ms || 8); if (p) got(p, p.info.ms);
     }
     function draw() {
       const V = view(), now = performance.now(), N = [];
       // hand to the screen, one per frame, the levels the view is about to need
-      for (let j = shown + 1; j < have && j <= cover() + 2; j++) { NV.show(pend[j], j % LAYERS); delete pend[j]; born[j] = j <= cover() && running ? now : -1e9; shown = j; break; }
-      const lo = Math.max(0, Math.ceil(s - Math.log2(2 * C * PCELL / MINWIN)));
-      for (let j = lo; j <= Math.min(shown, cover()) && N.length < 8; j++) { const c = C + 0.5 / Math.pow(2, j); N.push({ slot: j % LAYERS, x: c, y: c, p: PCELL * Math.pow(2, j - s), a: Math.min(1, (now - born[j]) / 500), taper: j ? 1 : 0 }); }
+      for (let j = shown + 1; j < have && j <= cover() + 2; j++) { NV.show(pend[j], j % LAYERS); delete pend[j]; born[j] = j <= cover() && running && j > 0 ? now : -1e9; shown = j; break; }
+      NV.lines = $('zout-lines') && $('zout-lines').checked;
+      const px = PCELL * Math.pow(2, -s), lo = Math.max(0, Math.ceil(Math.log2(MINWIN / (2 * HALF * px))));
+      for (let j = lo; j <= Math.min(shown, cover()) && N.length < 8; j++) { const c = C + 0.5 * Math.pow(2, J - j); N.push({ slot: j % LAYERS, x: c, y: c, p: px * Math.pow(2, j - J), q: px * Math.pow(2, Math.max(0, j - J)), a: Math.min(1, (now - born[j]) / 500), taper: 0 }); }
       NV.draw(N);
-      const across = V / PCELL * Math.pow(2, s);
-      $('zout-readout').innerHTML = !poly ? 'waiting for the sample…' : s < 0.05 ? 'one square is <b>' + PCELL + '</b> pixels' :
-        'zoomed out <b>' + bigNum(Math.pow(2, s)) + '×</b> · the view is about <b>' + bigNum(across) + '</b> squares across';
+      const across = V / PCELL * Math.pow(2, s), wait = shown < Math.min(cover(), 1);
+      $('zout-readout').innerHTML = failed ? 'this browser could not run the sampler' : !poly ? 'waiting for the sample…' : wait ? 'making the surroundings…' : s < 0.05 ? 'one square is <b>' + PCELL + '</b> pixels' :
+        'zoomed out <b>' + bigNum(Math.pow(2, s)) + '×</b> · the view is about <b>' + bigNum(across) + '</b> squares across' + (perLevel ? ' · a level takes about <b>' + (perLevel / 1000).toFixed(1) + '</b> s to make' : '');
     }
     function frame(t) {
       const dt = Math.min(0.1, (t - last) / 1000); last = t;
-      // full speed while the levels on screen cover the view with one to spare, slowing to a stop otherwise
-      const lead = shown - (s - Math.log2(C * PCELL / (0.55 * view())));
+      // full speed while the levels on screen cover the view with something to spare, slowing to a stop otherwise
+      const lead = shown - need();
       s += Math.pow(10, +$('zout-speed').value) * dt * Math.min(1, Math.max(0, lead / 0.8));
-      build(useWorker ? 7 : 12); draw();
+      build(useWorker ? 7 : 10); draw();
       if (running) raf = requestAnimationFrame(frame);
     }
     function setRunning(r) { running = r; $('zout-run').textContent = r ? 'Pause' : 'Zoom out'; cancelAnimationFrame(raf); if (r) { last = performance.now(); raf = requestAnimationFrame(frame); } }
     $('zout-run').addEventListener('click', () => { userPaused = running; setRunning(!running); });
     $('zout-new').addEventListener('click', () => { reset(); if (!running && !userPaused) setRunning(true); });
+    if ($('zout-lines')) $('zout-lines').addEventListener('change', () => { if (!running) draw(); });
     new ResizeObserver(() => { if (!running) draw(); }).observe(cv);
     draw();
     withHero(p => { poly = p; reset(); });
@@ -319,7 +340,7 @@ void main() {
       const visible = es[0].isIntersecting;
       if (!visible && running) setRunning(false); else if (visible && !running && !userPaused && !stillPlease) setRunning(true);
     }, { threshold: 0.3 }).observe($('zouter'));
-    window.__zout = { get s() { return s; }, set s(v) { s = v; }, get levels() { return have; }, get shown() { return shown; }, get worker() { return useWorker && !!worker; }, G, gl: NV.gl, draw, build, setRunning };
+    window.__zout = { get s() { return s; }, set s(v) { s = v; }, get levels() { return have; }, get shown() { return shown; }, get worker() { return useWorker && !!worker; }, get perLevel() { return perLevel; }, G, J, gl: NV.gl, draw, build, setRunning };
   })();
 
   // ---------------------------------------------------------------- live race

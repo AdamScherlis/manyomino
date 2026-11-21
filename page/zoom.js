@@ -228,111 +228,6 @@ function Refiner(G, seed, opt) {
            get joined() { return [joined, joinCells, missed]; }, get n() { return n; }, get progress() { return Math.min(1, workDone / workAll); }, get moves() { return movesDone; } };
 }
 
-// a picture at half the resolution: a site is occupied if any of the four it stands for is
-function orHalf(pic, S) {
-  const h = S >> 1, out = new Uint8Array(h * h);
-  for (let y = 0; y < h; y++) for (let x = 0; x < h; x++) { const p = 2 * x + 2 * y * S; if (pic[p] | pic[p + 1] | pic[p + S] | pic[p + S + 1]) out[x + y * h] = 255; }
-  return out;
-}
-
-// Going the other way: given a level, make the coarser levels around it.
-//
-// What lies outside a window cannot be had by running a local walk outwards; there is nothing
-// there to start from.  It is built from the far end instead.  A far picture, some other
-// typical piece of shape, stands for the surroundings at a coarser scale: the scale at which
-// the given level is FW = 64 of its sites across.  Where in it should the given level go?  Where
-// it looks most like the given level seen that coarsely.  Both are reduced to an 8 x 8 pattern
-// of which blocks hold anything, and the far picture is searched, over positions and its eight
-// orientations, for the 64 x 64 patch whose pattern differs from the given level's in the
-// fewest blocks, with a charge as well for what the far picture has just outside each stretch
-// of the patch's edge: heavy where the given level runs off its window there and the far
-// picture has nothing for it to run on into, lighter where it has something and the given
-// level does not reach the edge.  The far picture is then refined towards that patch J times as for zooming in,
-// and at every step the middle of the new level is held to what is known there: the given
-// level at that resolution (orHalf, applied the right number of times).  The walk runs around
-// the held part and joins on to it, and stray islands are linked (Refiner, ground).  The
-// result is J new levels, the outermost of which becomes the given level of the next batch.
-//
-// The far picture comes from a chain of refinements of its own, one more step each batch at a
-// randomly chosen place, so it is never the same.
-function Outward(G, seed, opt) {
-  const R = Refiner(G, seed, opt), C = G >> 1, FW = 64, NB = 8, J = Math.round(Math.log2(G / FW)) - 1, LIM = zoomLimit(G);
-  let s = (seed ^ 0x5bd1e995) >>> 0;
-  function rnd() { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }
-  // In real samples the block just outside a stretch of edge holds something 99% of the time if the
-  // window has cells on that stretch and 23% of the time if it has none; a far patch is charged
-  // the improbability (minus the log) of what it has there, an inside block that differs being charged 1.
-  const edge = (cells, outside) => cells ? (outside ? 0.01 : 4.5) : (outside ? 1.47 : 0.26);
-  let exits = null;
-  let far = null, pins = null, rims = null, want = null, jobs = [], cur = null, at = null, out = null, running = false, fit = [0, 0];
-  function place(pic) {                                // an occupied site within reach of the middle, at random
-    for (let t = 0; t < 2000; t++) { const x = C + (((rnd() * 2 - 1) * LIM) | 0), y = C + (((rnd() * 2 - 1) * LIM) | 0); if (pic[x + y * G]) return [x, y]; }
-    return nearestCell(pic, G, C, C, LIM) || [C, C];
-  }
-  function turned(pic, k) {                            // one of the eight orientations
-    const o = new Uint8Array(G * G);
-    for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) {
-      let u = k & 1 ? G - 1 - x : x, v = k & 2 ? G - 1 - y : y; if (k & 4) { const t = u; u = v; v = t; }
-      o[x + y * G] = pic[u + v * G];
-    }
-    return o;
-  }
-  // the orientation and place in the far picture whose 8 x 8 pattern is nearest the wanted one
-  function match() {
-    const bs = FW / NB, P = G + 1, sat = new Int32Array(P * P); let best = 1e9, pick = null, ties = 0;
-    for (let k = 0; k < 8; k++) {
-      const pic = turned(far, k);
-      for (let y = 0; y < G; y++) { let row = 0; for (let x = 0; x < G; x++) { row += pic[x + y * G] ? 1 : 0; sat[(x + 1) + (y + 1) * P] = sat[(x + 1) + y * P] + row; } }
-      for (let fy = C - LIM; fy <= C + LIM; fy += 4) for (let fx = C - LIM; fx <= C + LIM; fx += 4) {
-        let d = 0; const X0 = fx - FW / 2, Y0 = fy - FW / 2;
-        const occ = (bx, by) => { const x0 = X0 + bx * bs, y0 = Y0 + by * bs; return sat[(x0 + bs) + (y0 + bs) * P] - sat[x0 + (y0 + bs) * P] - sat[(x0 + bs) + y0 * P] + sat[x0 + y0 * P] > 0; };
-        for (let by = 0; by < NB && d <= best; by++) for (let bx = 0; bx < NB; bx++) if (occ(bx, by) !== !!want[bx + by * NB]) d++;
-        // where the given level runs off its edge, the far picture should have something just outside to run on into
-        for (let k2 = 0; k2 < NB && d <= best; k2++)
-          d += edge(exits[k2], occ(k2, -1)) + edge(exits[NB + k2], occ(k2, NB)) + edge(exits[2 * NB + k2], occ(-1, k2)) + edge(exits[3 * NB + k2], occ(NB, k2));
-        if (d < best) { best = d; ties = 1; pick = [k, fx, fy]; } else if (d === best && rnd() * ++ties < 1) pick = [k, fx, fy];
-      }
-    }
-    fit = [best, NB * NB]; return pick;
-  }
-  // begin a batch outward from the level F (G x G bytes)
-  function begin(F) {
-    // the given level at each coarser resolution, and where along its edge it really has cells on its outermost row or column:
-    // a coarse site on the pin's rim may be occupied only because of cells further in, and nothing should grow from it then
-    pins = []; rims = []; let p = F, S = G, rm = new Uint8Array(4 * G);
-    for (let t = 0; t < G; t++) { rm[t] = F[t]; rm[G + t] = F[t + (G - 1) * G]; rm[2 * G + t] = F[t * G]; rm[3 * G + t] = F[t * G + G - 1]; }
-    for (let i = 1; i <= J; i++) {
-      p = orHalf(p, S); const h = S >> 1, r2 = new Uint8Array(4 * h); for (let q = 0; q < 4; q++) for (let t = 0; t < h; t++) r2[q * h + t] = rm[q * S + 2 * t] | rm[q * S + 2 * t + 1];
-      S = h; rm = r2; pins.push(p); rims.push(rm);
-    }
-    while (S > NB) { p = orHalf(p, S); S >>= 1; } want = p;
-    // the stretches of each side (top, bottom, left, right; NB to a side) where F has cells on its outermost row or column
-    exits = new Uint8Array(4 * NB); const seg = G / NB;
-    for (let t = 0; t < G; t++) { const k2 = (t / seg) | 0; if (F[t]) exits[k2] = 1; if (F[t + (G - 1) * G]) exits[NB + k2] = 1; if (F[t * G]) exits[2 * NB + k2] = 1; if (F[t * G + G - 1]) exits[3 * NB + k2] = 1; }
-    if (!far) far = F;
-    jobs = ['far', 'match']; for (let i = J; i >= 1; i--) jobs.push(i);
-    out = []; cur = null; running = false;
-  }
-  // run for about `ms` milliseconds; the J new levels, nearest first, once they are all made
-  function step(ms) {
-    const t0 = performance.now();
-    while (jobs.length) {
-      const job = jobs[0];
-      if (job === 'match') { const m = match(); cur = turned(far, m[0]); at = [m[1], m[2]]; jobs.shift(); continue; }
-      if (!running) {
-        if (job === 'far') { const f = place(far); R.start(far, f[0], f[1]); } else { R.start(cur, at[0], at[1], pins[job - 1], G >> job, rims[job - 1]); at = [C, C]; }
-        running = true;
-      }
-      if (!R.step(Math.max(1, ms - (performance.now() - t0)))) return null;
-      running = false; jobs.shift();
-      if (job === 'far') far = R.result(); else { cur = R.result(); out.unshift(cur); }
-      if (performance.now() - t0 >= ms) break;
-    }
-    return jobs.length ? null : out;
-  }
-  return { begin, step, J, G, get joined() { return R.joined; }, get fit() { return fit; } };
-}
-
 // the occupied site nearest to (x, y) in a G x G picture, within radius rmax; null if none
 function nearestCell(pic, G, x, y, rmax) {
   let best = null, bd = 1e18;
@@ -346,4 +241,4 @@ function nearestCell(pic, G, x, y, rmax) {
   }
   return best;
 }
-if (typeof module !== 'undefined') module.exports = { Refiner, Outward, orHalf, nearestCell, ZOOM, zoomRate, zoomLimit };
+if (typeof module !== 'undefined') module.exports = { Refiner, nearestCell, ZOOM, zoomRate, zoomLimit };
