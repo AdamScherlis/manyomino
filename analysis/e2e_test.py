@@ -81,7 +81,7 @@ def one(job):
     o = subprocess.run(["node", os.path.join(ROOT, "analysis", "out_run.js"), tmp + "_b.bin", tmp, str(levels), str(seed + k), str(levels)] + extra, capture_output=True, text=True)
     if o.returncode: return None
     R = B * 2 ** (levels + 1); gen = raster(read(f"{tmp}_l{levels}.bin"), R)
-    return features(gen, levels), [json.loads(l) for l in o.stdout.strip().split("\n")], gen if k < 12 else None
+    return features(gen, levels), [json.loads(l) for l in o.stdout.strip().split("\n")], np.packbits(gen.astype(bool), axis=-1)
 
 
 def main():
@@ -89,17 +89,18 @@ def main():
     J = int(sys.argv[4]) if len(sys.argv) > 4 else 4; tag = sys.argv[5] if len(sys.argv) > 5 else "base"; extra = sys.argv[6:]
     rng = np.random.default_rng(seed); os.makedirs(os.path.join(ROOT, "zoomtest", "e2e"), exist_ok=True)
     snaps = sorted(f for f in os.listdir(os.path.join(ROOT, "prod")) if f.startswith("snap_") and "n1024000" in f and f.endswith(".bin"))
-    jobs = []; real = []; per = -(-R // len(snaps)); Rr = B * 2 ** (levels + 1); pics = []
+    jobs = []; real = []; per = -(-R // len(snaps)); Rr = B * 2 ** (levels + 1); pics = []; group = []
     for s in snaps:
         fn = os.path.join(ROOT, "prod", s); T = read(fn)
         for _ in range(per):
             c = T[rng.integers(len(T))]; g = raster(T - c, Rr); real.append(features(g, levels)); jobs.append((len(jobs), fn, (int(c[0]), int(c[1])), levels, seed * 100000, extra))
-            if len(jobs) <= 12: pics.append(g)
+            pics.append(np.packbits(g.astype(bool), axis=-1)); group.append(snaps.index(s))
     with Pool(J) as p: res = p.map(one, jobs, chunksize=1)
     keep = [i for i, r in enumerate(res) if r is not None]; names = list(real[0].keys())
     Rm = np.array([[real[i][k] for k in names] for i in keep]); Gm = np.array([[res[i][0][k] for k in names] for i in keep]); n = len(keep)
     info = [res[i][1] for i in keep]
-    np.savez_compressed(os.path.join(ROOT, "zoomtest", "e2e", tag + "_pics.npz"), real=np.array(pics), gen=np.array([res[i][2] for i in range(min(12, len(res))) if res[i] is not None and res[i][2] is not None]))
+    # every picture, real and made, as rows of bits, with the sample each root came from (for analysis/tell_test.py)
+    np.savez_compressed(os.path.join(ROOT, "zoomtest", "e2e", tag + "_pics.npz"), real=np.array([pics[i] for i in keep]), made=np.array([res[i][2] for i in keep]), group=np.array([group[i] for i in keep]))
     rows = []
     for j, k in enumerate(names):
         per_cell = k.startswith("L") and not k.endswith(" cells") and "seam" not in k and "boxes" not in k
@@ -114,7 +115,7 @@ def main():
         mean = lambda k: [float(np.mean([i[L][k] for i in info])) for L in range(levels)]
         json.dump({"roots": n, "samples": len(snaps), "levels": levels, "seed": seed, "rows": rows, "seconds": [m / 1000 for m in mean("ms")], "links": mean("links"), "unjoined": mean("unjoined"),
                    "fineParts": mean("fineParts"), "parts": mean("parts")}, open(os.path.join(ROOT, "analysis", "e2e_test.json"), "w"), indent=1)
-        np.savez_compressed(os.path.join(ROOT, "analysis", "e2e_pics.npz"), real=np.packbits(np.array(pics, bool), axis=-1), made=np.packbits(np.array([res[i][2] for i in range(min(12, len(res))) if res[i] is not None and res[i][2] is not None], bool), axis=-1))
+        np.savez_compressed(os.path.join(ROOT, "analysis", "e2e_pics.npz"), real=np.array([pics[i] for i in keep[:12]]), made=np.array([res[i][2] for i in keep[:12]]))
     print(f"{tag}: {n} roots, {levels} levels, {' '.join(extra)}")
     print(f"  {'':46s} {'real':>10s} {'made':>10s} {'diff':>8s} {'s.e.':>6s}")
     for k, r_, g, d, z in rows: print(f"  {k:46s} {r_:10.4g} {g:10.4g} {100 * d:+7.1f}% {z:+6.1f}")

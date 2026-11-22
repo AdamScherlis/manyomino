@@ -24,7 +24,7 @@
 // COLLAR  depth of the strip inside the seam that the walk may rework
 // NEAR  a join this short is made wherever ring and inside have come apart; REACH the longest join, made only if needed
 // CARRY 1: a strand grown in over the seam stays with the ring if it is all that joins two things
-const OUT = { B: 8, N: 16000, S: 100, TC: 16, RULE: 3, COVER: 1, W: 0.65, PARTS: 5, TINY: 3, T: 16, T1: 32, COLLAR: 4, NEAR: 2, REACH: 32, CARRY: 1 };
+const OUT = { B: 8, N: 16000, S: 100, TC: 16, RULE: 3, COVER: 1, W: 0.65, PARTS: 5, TINY: 3, T: 16, T1: 32, COLLAR: 4, NEAR: 2, REACH: 32, CARRY: 1, DROPF: 0 };
 const outRad = (x, y) => { const a = x < 0 ? -x - 1 : x, b = y < 0 ? -y - 1 : y; return a > b ? a : b; };
 
 // E: the engine's exports (after E.init); o: { J, seed, and any of OUT's fields }
@@ -200,7 +200,7 @@ function Outgoer(E, o) {
           if (a >= 0) { info.links += a; up[find(cR)] = find(cI); } else if (reach === P.REACH) info.unjoined++;
         } }
       E.pin(nfix, b - P.COLLAR, 2 * b); for (let q = 4 * Math.max(P.T, P.T1 >> (j - 1)); q > 0; q--) { E.relax(1); yield; }
-      const got = get(0, E.count()), gl = new Int32Array(E.memory.buffer, E.partlabels(), E.count()); st.push(got); E.parts(0);
+      let got = get(0, E.count()); const gl = new Int32Array(E.memory.buffer, E.partlabels(), E.count()).slice(); E.parts(0);
       // The ring from here on is what lies outside the seam.  A strand of it that grew in over the seam (its label is the
       // new one) is left behind with the inside, unless it is all that joins two things: two parts of the ring, or the
       // ring and a piece of the inside that it does not touch elsewhere.  Such a strand stays with the ring.
@@ -217,7 +217,9 @@ function Outgoer(E, o) {
         if (P.CARRY) for (const [c, t] of touches) { const cls = new Set([...t].map(find)); if (cls.size < 2) continue; stays[c] = 1; const f = [...cls]; for (let q = 1; q < f.length; q++) up[find(f[q])] = find(f[0]); }
         const rx = [], ry = [], ix = [], iy = [], il = [];
         for (let i = 0; i < n; i++) if (kind[i] === 1 || (kind[i] === 3 && stays[comp[i]])) { rx.push(got.x[i]); ry.push(got.y[i]); } else if (kind[i] === 2) { ix.push(got.x[i]); iy.push(got.y[i]); il.push(gl[i]); }
-        ring = { x: Int32Array.from(rx), y: Int32Array.from(ry) }; inner = { x: Int32Array.from(ix), y: Int32Array.from(iy) }; innerLab = Int32Array.from(il); }
+        ring = { x: Int32Array.from(rx), y: Int32Array.from(ry) }; inner = { x: Int32Array.from(ix), y: Int32Array.from(iy) }; innerLab = Int32Array.from(il);
+        if (P.DROPF) got = join(inner, ring); }
+      st.push(got);
       anchors = next; baseLab = fineLab;
     }
     prev = st; info.ms = Date.now() - t0;
