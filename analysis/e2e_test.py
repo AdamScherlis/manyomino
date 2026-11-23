@@ -4,7 +4,9 @@ For a root cell of a real sample of 1,024,000 cells, the page's own code (page/o
 page/outward.wasm, run by analysis/out_run.js) is given the real cells near the root and makes
 LEVELS levels outward.  At the resolution of real cells the result is a picture of everything
 within 8 * 2^(LEVELS+1) cells of the root, of which only the middle (within 16 cells) is real.
-It is compared with the real cells in the same square around the same root.
+It is compared with the real cells in the same square around the same root.  One level more is made
+than is compared, so that the outermost ring compared has been joined to a level outside it, as
+every ring on the page is.
 
   python3 analysis/e2e_test.py ROOTS [LEVELS=4] [SEED=1] [JOBS=4] [TAG=base] [key=value ...]
       # key=value pairs go to the engine (N, S, TC, T, ...); writes zoomtest/e2e/TAG.json and prints a table.
@@ -78,9 +80,10 @@ def features(g, levels):
 def one(job):
     k, fn, c, levels, seed, extra = job; tmp = os.path.join(ROOT, "zoomtest", "e2e", f"tmp_{os.getpid()}")
     if subprocess.run([os.path.join(ROOT, "ball"), fn, tmp + "_b.bin", str(c[0]), str(c[1]), "32", "16000"], stderr=subprocess.DEVNULL).returncode: return None
-    o = subprocess.run(["node", os.path.join(ROOT, "analysis", "out_run.js"), tmp + "_b.bin", tmp, str(levels), str(seed + k), str(levels)] + extra, capture_output=True, text=True)
+    # one level more is made than is looked at, so that the last ring looked at has a neighbour outside it, as on the page
+    o = subprocess.run(["node", os.path.join(ROOT, "analysis", "out_run.js"), tmp + "_b.bin", tmp, str(levels + 1), str(seed + k), str(levels + 1)] + extra, capture_output=True, text=True)
     if o.returncode: return None
-    R = B * 2 ** (levels + 1); gen = raster(read(f"{tmp}_l{levels}.bin"), R)
+    R = B * 2 ** (levels + 1); gen = raster(read(f"{tmp}_l{levels + 1}.bin"), R)
     return features(gen, levels), [json.loads(l) for l in o.stdout.strip().split("\n")], np.packbits(gen.astype(bool), axis=-1)
 
 

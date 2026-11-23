@@ -18,6 +18,13 @@ if E:
     t += ["", f"Leaving out the rows for floating pieces (which a real picture cannot have), {sum(1 for z in zs if abs(z) > 2)} of {len(zs)} rows are beyond 2 s.e. and the largest is {max(abs(z) for z in zs):.1f}. "
           f"Per level: {', '.join(f'{x:.1f}' for x in E['seconds'])} s; cells added as joins {', '.join(f'{x:.0f}' for x in E['links'])}; "
           f"parts in the finer world's box {', '.join(f'{x:.2f}' for x in E['fineParts'])}, kept apart in the new world {', '.join(f'{x:.2f}' for x in E['parts'])}."]
+    Tl = load("tell_test.json")
+    if Tl:
+        f = lambda k: f"{Tl[k]['auc']:.3f} ± {Tl[k]['se']:.3f} ({100 * Tl[k]['correct']:.0f}% of pictures called correctly)"
+        t += ["", f"Classifiers trained to tell the made pictures from the real ones (`analysis/tell_test.py`; {Tl['pictures']} of each, scored on pictures from samples they were not trained on; "
+              f"area under the ROC curve, 0.5 = cannot tell): a logistic regression on about 150 summary numbers per picture, {f('summary')}; the same without the numbers that describe "
+              f"how the picture falls into pieces, {f('summary, without the pieces')}; a small network looking at 9×9 windows centred on cells, 3,000 per picture, {f('patches')}. "
+              "The same classifiers set to tell the real pictures of half the samples from those of the other half score between 0.41 and 0.54."]
     if Pt:
         t += ["", f"Where strands rejoin (`analysis/part_test.py`, {Pt['roots']} roots): of the pieces into which the cells within {Pt['radii'][0]} of a root fall, the number still separate within R cells, "
               "in real samples and in the first world made from them (at R/2 of its own cells; in the box, touching cells of different parts are not joined).", "",

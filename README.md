@@ -479,24 +479,41 @@ The picture takes from each world only a ring, from its box out to twice the box
 the finer level's picture and outside the next one's. A world's cells are large on the
 screen, so the ring is refined six times (five on a small screen) by doubling and the local
 walk, as for the zoom in, but never below real cells (finer than that, a cell just becomes
-four). At each stage the finer level's picture at that resolution lies inside the ring and
-is held fixed, except for a collar four cells deep inside the seam, which the walk may
-rework together with the ring: without it each side is relaxed against nothing and the seam
-comes out 15 to 35% short of cells and of joins. The ring is a closed region: nothing beyond
-its outer edge counts for connectivity, and where a strand leaves it one cell on the edge is
-held. Wherever the ring touched a piece of the inside at one stage it must touch the same
-piece at the next, where the inside is a different, finer picture; short gaps are filled,
-longer ones only if the two would otherwise not be joined at all. A strand of the ring that
-has grown in over the seam is dropped at the next stage unless it is all that joins two
-things. On the page a level is drawn out to where the next level's reworked strip begins
-(12 of its 16 real cells for the first, since the strip is four real cells deep there; all
-but 1/128 of the way from the sixth level on), and the next level is drawn beyond.
+four). The walk runs for 16 sweeps at each stage and 64 at the last, which is the one that
+sets the fine texture: with 16 or 32 there a classifier can tell the texture from the real
+thing (below), with 64 it cannot, and more at the earlier stages only wears the ring away at
+its outer edge, where the walk runs against nothing. The details of a stage:
+
+- The finer level's picture at that resolution lies inside the ring and is held fixed,
+  except for a collar four cells deep inside the seam, which the walk may rework together
+  with the ring. Without it each side is relaxed against nothing and the seam comes out 15
+  to 35% short of cells and of joins.
+- The ring is a closed region: nothing beyond its outer edge counts for connectivity, and
+  where a strand leaves it one cell on the edge is held.
+- Every cell of the inside carries the label of its piece (at the first stage, of its part
+  of the world's box; after that the pieces of the finer picture take the labels of the
+  pieces they refine). Two pieces of the inside that only touch are not joined, a new cell
+  may not touch two of them, and the last cell of a piece is never taken away. Without
+  these the walk can drop a real join in favour of a touch that the next stage undoes.
+- Wherever the ring touched a piece of the inside at one stage it must touch the same piece
+  at the next, where the inside is a different, finer picture. Gaps of up to two cells are
+  filled; longer ones only if ring and piece would otherwise not be joined at all, and then
+  never by way of another piece. Pieces that carry one label are joined to each other.
+- A strand of the ring that has grown in over the seam is dropped at the next stage unless
+  it is all that joins two things.
+
+On the page a level is drawn out to where the next level's reworked strip begins (12 of its
+16 real cells for the first, since the strip is four real cells deep there; all but 1/128 of
+the way from the sixth level on), and the next level is drawn beyond.
 
 `analysis/e2e_test.py` sets the whole of this against real samples. The real cells near a
 cell of a 1,024,000-cell sample are given to the page's own code (run under Node by
-`analysis/out_run.js`), four levels are made, and the result at the resolution of real
-cells, a picture 512 cells wide in which only the middle 32×32 is real, is compared with the
-real cells around the same root.
+`analysis/out_run.js`), five levels are made, and the first four, at the resolution of real
+cells a picture 512 cells wide of which only the middle 32×32 was given, are compared with
+the real cells around the same root. (The fifth is made so that the fourth ring has been
+joined to a level outside it, as every ring on the page is; a ring with nothing beyond it is
+thin at its outer edge.) `analysis/tell_test.py` then trains classifiers to tell the made
+pictures from the real ones.
 
 <!-- zoom-out table -->
 260 roots in 26 samples, 4 levels. *real* and *made* are means over roots (per-cell rows: totals over roots divided), *s.e.* the difference in standard errors (paired by root; by resampling roots for the per-cell rows). Pieces are counted in the middle three quarters of the picture, so that its edge runs through the middle of the last ring.

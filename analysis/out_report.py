@@ -92,7 +92,7 @@ def out_report(assets=None):
         fl = rows.get("cells in floating pieces"); tot = rows.get("cells")
         out.append(
             f"<p>How close is it? For the first few levels it can be set against the real thing. Take a real sample of 1,024,000 cells and one of its cells. Give the procedure "
-            f"the real squares near that cell, and let it make {L} levels. At the resolution of single squares the result is a picture {2 * half} squares wide of which only the "
+            f"the real squares near that cell, and let it make {L + 1} levels. At the resolution of single squares the first {L} are a picture {2 * half} squares wide of which only the "
             f"middle {4 * B}&nbsp;&times;&nbsp;{4 * B} was given, {100 * (4 * B) ** 2 / (2 * half) ** 2:.1f}% of its area (and the outer {int(P['COLLAR'])} rows of that are reworked when the "
             f"first level is joined on). Set it beside the real squares around the same cell, "
             f"for {n} cells in {E.get('samples', 26)} samples.</p>")
@@ -104,6 +104,13 @@ def out_report(assets=None):
             f"side of each seam hold {min(seam):.0f} to {max(seam):.0f}% too many, with as many more joins across. The fine texture is off by at most {max(tex):.1f}%. And a real "
             f"picture has no piece that neither holds the starting square nor reaches the edge, where the made ones have {rows['floating pieces'][2]:.1f} on average, small ones, "
             f"holding {100 * fl[2] / tot[2]:.1f}% of the squares: a part near a seam that failed to be joined on. None of it can be seen in a single picture.</p>")
+    Tl = load("tell_test.json")
+    if Tl and E:
+        pc = lambda k: f"{100 * Tl[k]['correct']:.0f}%"
+        out.append(
+            f"<p>A list of numbers only finds the differences someone thought to list. So, as for the samples themselves, two classifiers were trained to tell made pictures from "
+            f"real ones and then scored on pictures from samples they had not seen. One looks at about 150 summary numbers of a whole picture, the other at 3,000 small windows of "
+            f"it, 9 squares wide. A classifier that has found nothing is right half the time. The first calls {pc('summary')} of pictures correctly, the second {pc('patches')}.</p>")
     if Dp:
         rw = Dp["rows"]; fine = [r for r in rw if r["level"] > Dp["J"]]; h = len(fine) // 2; a, b = fine[:h], fine[h:]
         ms = lambda rs, k: (float(np.mean([r[k] for r in rs])), float(np.std([r[k] for r in rs], ddof=1) / np.sqrt(len(rs))))
