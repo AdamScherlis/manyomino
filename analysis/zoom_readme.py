@@ -18,13 +18,15 @@ if E:
     t += ["", f"Leaving out the rows for floating pieces (which a real picture cannot have), {sum(1 for z in zs if abs(z) > 2)} of {len(zs)} rows are beyond 2 s.e. and the largest is {max(abs(z) for z in zs):.1f}. "
           f"Per level: {', '.join(f'{x:.1f}' for x in E['seconds'])} s; cells added as joins {', '.join(f'{x:.0f}' for x in E['links'])}; "
           f"parts in the finer world's box {', '.join(f'{x:.2f}' for x in E['fineParts'])}, kept apart in the new world {', '.join(f'{x:.2f}' for x in E['parts'])}."]
-    Tl = load("tell_test.json")
+    Tl = load("tell_test.json"); Tn = load("tell_null.json")
     if Tl:
         f = lambda k: f"{Tl[k]['auc']:.3f} ± {Tl[k]['se']:.3f} ({100 * Tl[k]['correct']:.0f}% of pictures called correctly)"
         t += ["", f"Classifiers trained to tell the made pictures from the real ones (`analysis/tell_test.py`; {Tl['pictures']} of each, scored on pictures from samples they were not trained on; "
               f"area under the ROC curve, 0.5 = cannot tell): a logistic regression on about 150 summary numbers per picture, {f('summary')}; the same without the numbers that describe "
               f"how the picture falls into pieces, {f('summary, without the pieces')}; a small network looking at 9×9 windows centred on cells, 3,000 per picture, {f('patches')}. "
-              "The same classifiers set to tell the real pictures of half the samples from those of the other half score between 0.41 and 0.54."]
+              + (f"The same classifiers set to tell the real pictures of half the samples from those of the other half, where there is nothing to find, score "
+                 f"{Tn['summary']['auc']:.3f} ± {Tn['summary']['se']:.3f}, {Tn['summary, without the pieces']['auc']:.3f} ± {Tn['summary, without the pieces']['se']:.3f} and "
+                 f"{Tn['patches']['auc']:.3f} ± {Tn['patches']['se']:.3f}." if Tn else "")]
     if Pt:
         t += ["", f"Where strands rejoin (`analysis/part_test.py`, {Pt['roots']} roots): of the pieces into which the cells within {Pt['radii'][0]} of a root fall, the number still separate within R cells, "
               "in real samples and in the first world made from them (at R/2 of its own cells; in the box, touching cells of different parts are not joined).", "",
@@ -50,7 +52,7 @@ if E:
         t += ["", f"Worlds only, {Dr['chains']} runs of {Dr['levels']} levels (`scripts/out_drift.sh`), means over the four quarters of the levels: cells of the world in its ring "
               + ", ".join(f"{m:.0f} ± {e:.0f}" for m, e in q["ring"]) + "; in its box " + ", ".join(f"{m:.0f} ± {e:.0f}" for m, e in q["box"]) + "; parts kept apart "
               + ", ".join(f"{m:.1f}" for m, e in q["parts"]) + ". Real samples have " + (f"{[r for r in E['rows'] if r[0] == 'L1 cells'][0][1] / 2.95:.0f}" if E else "about 114")
-              + " cells in the ring at any scale (the real count 16 to 32 cells from a root, over 2.95). The first levels start above that (see the table) and the count falls towards it, "
-              "by about 8% from the first quarter to the last; in blocks of 15 levels it wanders between 103 and 124, and whether it levels off these runs cannot say."]
+              + f" cells in the ring at any scale (the real count 16 to 32 cells from a root, over 2.95). The count falls by {100 * (1 - q['ring'][3][0] / q['ring'][0][0]):.0f}% from the "
+              "first quarter to the last; in blocks of 15 levels it wanders between 103 and 124, and whether that is a slow drift or chance these runs cannot say."]
     s2 = re.sub(r"<!-- zoom-out table -->.*?<!-- /zoom-out table -->", lambda m: "<!-- zoom-out table -->\n" + "\n".join(t) + "\n<!-- /zoom-out table -->", s2, flags=re.S)
 open(p, "w").write(s2)

@@ -98,20 +98,23 @@ def out_report(assets=None):
             f"first level is joined on). Set it beside the real squares around the same cell, "
             f"for {n} cells in {E.get('samples', 26)} samples.</p>")
         out.append("\n".join(t for t in tb if t))
-        seam = [100 * r[3] for r in E["rows"] if "seam" in r[0]]; tex = [abs(100 * r[3]) for r in E["rows"] if r[0].endswith("(per cell)") and "floating" not in r[0] and not r[0].startswith("L1 ") and "4 neigh" not in r[0]]
+        seam = [100 * r[3] for r in E["rows"] if "seam" in r[0]]; ring = [abs(100 * rows[f"L{k} cells"][3]) for k in range(1, L + 1)]
+        tex = [abs(100 * r[3]) for r in E["rows"] if r[0].endswith("(per cell)") and "floating" not in r[0] and not r[0].startswith("L1 ") and "4 neigh" not in r[0]]
+        nfl = round(rows["floating pieces"][2] * n); atseam = sum(1 for r in E["rows"] if "seam" in r[0] and abs(r[4]) > 2)
         out.append(
-            f"<p>Of {len(zs)} such numbers, {big} differ by more than two standard errors, where chance alone would give about {0.05 * len(zs):.0f}. So with {n} pictures of each "
-            f"kind the two can be told apart, and the differences have a pattern. The made pictures hold {100 * tot[3]:.0f}% more squares overall. The two layers of squares on either "
-            f"side of each seam hold {min(seam):.0f} to {max(seam):.0f}% too many, with as many more joins across. The fine texture is off by at most {max(tex):.1f}%. And a real "
-            f"picture has no piece that neither holds the starting square nor reaches the edge, where the made ones have {rows['floating pieces'][2]:.1f} on average, small ones, "
-            f"holding {100 * fl[2] / tot[2]:.1f}% of the squares: a part near a seam that failed to be joined on. None of it can be seen in a single picture.</p>")
-    Tl = load("tell_test.json")
+            f"<p>Of {len(zs)} such numbers, {big} differ by more than two standard errors, where chance alone would give about {0.05 * len(zs):.0f}, and {atseam} of those are at "
+            f"the seams: the layers of squares on either side of a seam hold {min(seam):.0f} to {max(seam):.0f}% too many, with as many more joins across. Away from the seams the "
+            f"number of squares in each ring is within {max(ring):.0f}% of the real one and the fine texture within {max(tex):.1f}%. And in {n} made pictures there "
+            f"{'was' if nfl == 1 else 'were'} {nfl} piece{'' if nfl == 1 else 's'} that neither held the starting square nor reached the edge, which a real picture cannot have.</p>")
+    Tl = load("tell_test.json"); Tn = load("tell_null.json")
     if Tl and E:
         pc = lambda k: f"{100 * Tl[k]['correct']:.0f}%"
         out.append(
             f"<p>A list of numbers only finds the differences someone thought to list. So, as for the samples themselves, two classifiers were trained to tell made pictures from "
             f"real ones and then scored on pictures from samples they had not seen. One looks at about 150 summary numbers of a whole picture, the other at 3,000 small windows of "
-            f"it, 9 squares wide. A classifier that has found nothing is right half the time. The first calls {pc('summary')} of pictures correctly, the second {pc('patches')}.</p>")
+            f"it, 9 squares wide. A classifier that has found nothing is right half the time. The first calls {pc('summary')} of pictures correctly, the second {pc('patches')}." +
+            (f" Set to tell the real pictures of half the samples from those of the other half, where there is nothing to find, they score {100 * Tn['summary']['correct']:.0f}% and "
+             f"{100 * Tn['patches']['correct']:.0f}%. So the windows show nothing, and the summary numbers show the seams." if Tn else "") + "</p>")
     if Dp:
         rw = Dp["rows"]; fine = [r for r in rw if r["level"] > Dp["J"]]; h = len(fine) // 2; a, b = fine[:h], fine[h:]
         ms = lambda rs, k: (float(np.mean([r[k] for r in rs])), float(np.std([r[k] for r in rs], ddof=1) / np.sqrt(len(rs))))
@@ -123,13 +126,13 @@ def out_report(assets=None):
                      + ", ".join(f"{m:.0f}&nbsp;&plusmn;&nbsp;{e:.0f}" for m, e in q[:3]) + f" and {q[3][0]:.0f}&nbsp;&plusmn;&nbsp;{q[3][1]:.0f} squares on average over the four quarters of the levels, and its box "
                      + ", ".join(f"{m:.0f}" for m, e in b_[:3]) + f" and {b_[3][0]:.0f}. The amount varies a great deal from level to level, as the amount of shape near a point of a real polyomino does; real samples average "
                      + (f"{rows['L1 cells'][1] / 2.95:.0f}" if E else "114") + f" in the ring at any scale. So the amount falls by about {100 * (1 - q[3][0] / q[0][0]):.0f}% from the first quarter to "
-                     "the last, towards the real figure; whether it levels off there these runs cannot say. ")
+                     "the last; whether that is a slow drift or chance these runs cannot say. ")
         out.append(
             f"<p>Beyond those levels there is nothing real to compare with, since no sample is large enough. What can be checked is that nothing drifts. {drift}"
             f"In the finished pictures of a run of {len(rw)} levels, once they are as fine as they get, there are {ms(a, 'empty')[0]:.3f} empty sites beside the shape per square in the first half and "
             f"{ms(b, 'empty')[0]:.3f} in the second, and {ms(a, 'tips')[0]:.3f} and {ms(b, 'tips')[0]:.3f} squares with a single neighbour; real samples have "
             f"{rows[f'L{L} empty sites next to the shape (per cell)'][1]:.3f} and {rows[f'L{L} with 1 neighbours (per cell)'][1]:.3f}. "
-            f"A level takes about {ms(rw, 's')[0]:.0f} seconds to make on one core of a desktop machine, most of it the sampler.</p>" if E else "")
+            f"A level takes about {ms(rw, 's')[0]:.0f} seconds to make on one core of a desktop machine, {ms(rw, 'sWorld')[0]:.1f} of them the sampler.</p>" if E else "")
     out.append(
         f"<p>Three limits should be kept in mind. A world has {int(P['N']):,} squares, not infinitely many, which thins its outer parts; within the ring that is drawn the effect "
         f"is under a few per cent. The halving step is an approximation, tuned so that what it leaves on the edge of the box matches a typical polyomino. And each ring is drawn "

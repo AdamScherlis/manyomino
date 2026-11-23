@@ -15,7 +15,7 @@ learnt about one sample's large-scale shape helps).
 For each: the area under the ROC curve on held-out pictures (0.5 = cannot tell, 1 = always can)
 and the share of pictures called correctly.
 
-  python3 analysis/tell_test.py [TAG=final] [FOLDS=4] [SEED=1]     # reads zoomtest/e2e/TAG_pics.npz; with TAG final writes analysis/tell_test.json
+  python3 analysis/tell_test.py [TAG=final] [FOLDS=4] [SEED=1]     # reads zoomtest/e2e/TAG_pics.npz; with TAG final writes analysis/tell_test.json (and the control analysis/tell_null.json)
   python3 analysis/tell_test.py TAG FOLDS SEED null                # a control: the real pictures of half the samples against those of the other half
 """
 import sys, os, json, math
@@ -108,6 +108,7 @@ def main():
         for i in np.nonzero(fold == k)[0]: s[i] = f(P[i]).mean()
     assert np.isfinite(s).all() and all(s[fold == k].std() > 0 for k in range(K)), "the patch classifier did not train"
     out["patches"] = report("patches", s, y, rng, fold)
+    if tag == "final" and null: json.dump(out, open(os.path.join(ROOT, "analysis", "tell_null.json"), "w"), indent=1)
     if tag == "final" and not null: json.dump(out, open(os.path.join(ROOT, "analysis", "tell_test.json"), "w"), indent=1)
 
 
