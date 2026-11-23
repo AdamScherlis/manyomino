@@ -279,14 +279,14 @@ void main() {
     const LAYERS = 12, NV = NestView(cv, cv.clientWidth <= 420 ? 1024 : 2048, LAYERS, 8, Z0, { fade0: 0.99, fade1: 1.0 }), G = NV.G, C = G / 2;
     const J = Math.round(Math.log2(G / (4 * OUT.B))), HALF = 2 * OUT.B, PCELL = 20, MINWIN = 8;     // a level reaches HALF of its own cells from the root; px per real cell at the start
     const wasmBytes = () => { const b = atob(OUT_WASM), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
-    const src = 'const OUT=' + JSON.stringify(OUT) + ';const outRad=' + outRad + ';' + Outgoer + ';let E=null,O=null;const B64="' + OUT_WASM + '";' +
+    const src = 'const OUT=' + JSON.stringify(OUT) + ';const outRad=' + outRad + ';const outCollar=' + outCollar + ';' + Outgoer + ';let E=null,O=null;const B64="' + OUT_WASM + '";' +
       'onmessage=e=>{const m=e.data;try{if(m.cells){if(!E){const b=atob(B64),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);E=new WebAssembly.Instance(new WebAssembly.Module(u),{}).exports;E.init(12);}' +
       'O=Outgoer(E,{J:m.J,seed:m.seed});const p=O.begin(m.cells);postMessage({id:m.id,level:0,pic:p},[p.buffer]);}else{const p=O.next();postMessage({id:m.id,level:O.level,pic:p,ms:p.info.ms},[p.buffer]);}}catch(err){postMessage({id:m.id,error:String(err)});}};';
     let poly = null, have = 0, shown = -1, pend = {}, born = {}, s = 0, running = false, userPaused = false, raf = 0, last = 0, seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0;
     let worker = null, useWorker = true, busy = false, job = 0, sent = 0, E = null, O = null, loading = false, failed = false, cells = null, perLevel = 0;
     const view = () => Math.max(240, cv.clientWidth);
-    // The next level reworks a strip OUT.COLLAR cells deep inside the seam, at its finest stage that is not finer than real cells.  A level is drawn out to there.
-    const used = j => 1 - OUT.COLLAR / (OUT.B * Math.pow(2, Math.min(j + 1, J)));
+    // The next level reworks a strip inside the seam (outCollar cells deep at its finest stage that is not finer than real cells).  A level is drawn out to there.
+    const used = j => { const st = Math.min(j + 1, J); return 1 - outCollar(OUT, st) / (OUT.B << st); };
     const need = () => s + Math.log2(0.71 * view() / (PCELL * HALF));                 // the level (not rounded) whose picture just covers the view
     const cover = () => Math.max(0, Math.ceil(need()));
     function dropWorker(forGood) { if (worker) worker.terminate(); worker = null; busy = false; job++; if (forGood) useWorker = false; }

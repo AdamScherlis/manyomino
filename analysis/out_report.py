@@ -43,7 +43,7 @@ def pairs_png(path, n=6, crop=192):
 
 def out_report(assets=None):
     P = settings(); E = load("e2e_test.json"); Pt = load("part_test.json"); Dp = load("out_deep.json")
-    B = int(P["B"]); T = {"ZO_N": f"{int(P['N']):,}", "ZO_BOX": str(2 * B), "ZO_REALBOX": str(4 * B), "ZO_REALR": str(2 * B - int(P["COLLAR"])), "ZO_TEXT": "", "ZO_PAIRS": ""}
+    B = int(P["B"]); T = {"ZO_N": f"{int(P['N']):,}", "ZO_BOX": str(2 * B), "ZO_REALBOX": str(4 * B), "ZO_REALR": str(2 * B - min(int(P["COLLAR"]), B // 2)), "ZO_TEXT": "", "ZO_PAIRS": ""}
     pm = lambda v, d=2: f"{v[0]:.{d}f}"
     out = []
     out.append(
@@ -70,8 +70,9 @@ def out_report(assets=None):
     out.append(
         f"<p>The picture takes from each world only a ring, from its box out to a box twice as wide. Inside the ring is the finer world&rsquo;s picture; outside it, the next "
         f"world&rsquo;s. A world&rsquo;s squares are large on the screen, so its ring is drawn finer by the doubling and walk of the last section, several times over, each time "
-        f"with the finer picture held in place inside it. Where a strand crosses from one to the other the two are kept joined, and the walk may rework a strip "
-        f"{int(P['COLLAR'])} squares deep just inside the seam, so that the two sides settle against each other.</p>")
+        f"with the finer picture held in place inside it. Where a strand crosses from one to the other the two are kept joined, and the walk may rework a strip up to "
+        f"{int(P['COLLAR'])} squares deep just inside the seam, so that the two sides settle against each other: a ring made with nothing outside it comes out thin and "
+        f"short of loose ends along its outer edge.</p>")
     if E:
         rows = {r[0]: r for r in E["rows"]}; L = E["levels"]; half = B * 2 ** (L + 1); n = E["roots"]
         def row(key, label, d=1, pc=True):
@@ -93,7 +94,7 @@ def out_report(assets=None):
         out.append(
             f"<p>How close is it? For the first few levels it can be set against the real thing. Take a real sample of 1,024,000 cells and one of its cells. Give the procedure "
             f"the real squares near that cell, and let it make {L + 1} levels. At the resolution of single squares the first {L} are a picture {2 * half} squares wide of which only the "
-            f"middle {4 * B}&nbsp;&times;&nbsp;{4 * B} was given, {100 * (4 * B) ** 2 / (2 * half) ** 2:.1f}% of its area (and the outer {int(P['COLLAR'])} rows of that are reworked when the "
+            f"middle {4 * B}&nbsp;&times;&nbsp;{4 * B} was given, {100 * (4 * B) ** 2 / (2 * half) ** 2:.1f}% of its area (and the outer {min(int(P['COLLAR']), B // 2)} rows of that are reworked when the "
             f"first level is joined on). Set it beside the real squares around the same cell, "
             f"for {n} cells in {E.get('samples', 26)} samples.</p>")
         out.append("\n".join(t for t in tb if t))

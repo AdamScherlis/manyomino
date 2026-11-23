@@ -101,8 +101,12 @@ def main():
     NP = 3000; s = np.zeros(len(pics)); P = [patches(p, NP, rng) for p in pics]
     for k in range(K):
         tr = np.nonzero(fold != k)[0]; X0 = np.vstack([P[i] for i in tr if y[i] == 0]); X1 = np.vstack([P[i] for i in tr if y[i] == 1])
-        f = train_mlp(X0, X1, epochs=6, hidden=64, seed=seed + k)
+        for attempt in range(4):                    # (a training run that blows up gives scores that are not numbers: train again)
+            f = train_mlp(X0, X1, epochs=6, hidden=64, seed=seed + k + 1000 * attempt)
+            with np.errstate(all="ignore"): ok = np.isfinite(f(X0[:2000])).all()
+            if ok: break
         for i in np.nonzero(fold == k)[0]: s[i] = f(P[i]).mean()
+    assert np.isfinite(s).all(), "the patch classifier gave scores that are not numbers"
     out["patches"] = report("patches", s, y, rng, fold)
     if tag == "final" and not null: json.dump(out, open(os.path.join(ROOT, "analysis", "tell_test.json"), "w"), indent=1)
 

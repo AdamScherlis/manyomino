@@ -24,7 +24,7 @@
 // COLLAR  depth of the strip inside the seam that the walk may rework (less at the first stages: see outCollar)
 // NEAR  a join this short is made wherever ring and inside have come apart; REACH the longest join, made only if needed
 // CARRY 1: a strand grown in over the seam stays with the ring if it is all that joins two things
-const OUT = { B: 8, N: 16000, S: 100, TC: 16, RULE: 3, COVER: 1, W: 0.65, PARTS: 5, TINY: 3, T: 16, T1: 32, TL: 64, COLLAR: 4, NEAR: 2, REACH: 32, CARRY: 1, DROPF: 0 };
+const OUT = { B: 8, N: 16000, S: 100, TC: 16, RULE: 3, COVER: 1, W: 0.65, PARTS: 5, TINY: 3, T: 16, T1: 32, TL: 64, COLLAR: 12, NEAR: 2, REACH: 32, CARRY: 1, DROPF: 0 };
 // the depth, in cells of stage j, of the strip inside the seam that the walk may rework: COLLAR, but never more than a quarter of the way in
 const outCollar = (P, j) => Math.min(P.COLLAR, (P.B << j) >> 2);
 const outRad = (x, y) => { const a = x < 0 ? -x - 1 : x, b = y < 0 ? -y - 1 : y; return a > b ? a : b; };
