@@ -98,13 +98,14 @@ function Outgoer(E, o) {
   }
 
   // The connected pieces of a set of cells, all at r < R: for each cell, the number (from 1) of its piece.
-  function pieces(c, R) {
+  // Given labels, two touching cells that both have one are joined only if the labels are the same.
+  function pieces(c, R, lab) {
     const W = 2 * R, g = new Int32Array(W * W), n = c.x.length, id = new Int32Array(n), st = new Int32Array(n); let np = 0;
     for (let i = 0; i < n; i++) g[(c.y[i] + R) * W + c.x[i] + R] = i + 1;
     for (let i = 0; i < n; i++) {
       if (id[i]) continue; id[i] = ++np; let top = 0; st[top++] = i;
       while (top) { const a = st[--top], x = c.x[a] + R, y = c.y[a] + R;
-        for (let d = 0; d < 4; d++) { const u = x + NB[d][0], v = y + NB[d][1]; if (u < 0 || v < 0 || u >= W || v >= W) continue; const k = g[v * W + u] - 1; if (k >= 0 && !id[k]) { id[k] = np; st[top++] = k; } } }
+        for (let d = 0; d < 4; d++) { const u = x + NB[d][0], v = y + NB[d][1]; if (u < 0 || v < 0 || u >= W || v >= W) continue; const k = g[v * W + u] - 1; if (k >= 0 && !id[k] && !(lab && lab[a] && lab[k] && lab[a] !== lab[k])) { id[k] = np; st[top++] = k; } } }
     }
     return { id, np, at: (x, y) => (x < -R || y < -R || x >= R || y >= R) ? -1 : g[(y + R) * W + x + R] - 1 };
   }
@@ -175,19 +176,19 @@ function Outgoer(E, o) {
       // each other by the shortest way through empty sites.  Then every place where the ring touched the inside gets
       // a short join if it has come apart; a longer one is made only where the ring's cell and the piece it touched
       // would otherwise not be joined at all.
-      { const pa = pieces({ x: X_, y: Y_ }, 2 * b), up = Array.from({ length: pa.np + 1 }, (_, a) => a), find = a => { while (up[a] !== a) a = up[a] = up[up[a]]; return a; }, of = new Map();
+      { const pa = pieces({ x: X_, y: Y_ }, 2 * b, L_), up = Array.from({ length: pa.np + 1 }, (_, a) => a), find = a => { while (up[a] !== a) a = up[a] = up[up[a]]; return a; }, of = new Map();
         const size = new Int32Array(pa.np + 1), lists = new Map();
         for (let i = 0; i < L_.length; i++) { if (!L_[i]) continue; const q = pa.id[i]; size[q]++; let l = lists.get(L_[i]); if (!l) lists.set(L_[i], l = []); if (!l.includes(q)) l.push(q); }
         for (const [lab, l] of lists) {
           l.sort((u, v) => size[v] - size[u]); of.set(lab, l[0]);
           for (let t = 1; t < l.length; t++) {
-            // breadth first from the smaller piece through empty sites inside, to any cell joined to the largest
+            // breadth first from the smaller piece through empty sites inside, to a cell of the same label (or of the ring) that is joined to the largest
             const q = l[t], seen = new Map(), qx = [], qy = []; let h = 0, hit = -1;
             if (find(q) === find(l[0])) continue;
             for (let k = 0; k < L_.length; k++) if (pa.id[k] === q) { qx.push(X_[k]); qy.push(Y_[k]); seen.set(key(X_[k], Y_[k]), -1); }
             while (h < qx.length && hit < 0 && qx.length < 60000) { const x = qx[h], y = qy[h];
               for (const [dx, dy] of NB) { const u = x + dx, v = y + dy, kk = key(u, v); if (seen.has(kk) || outRad(u, v) >= b) continue; const c = pa.at(u, v);
-                if (c >= 0) { if (find(pa.id[c]) === find(l[0])) { hit = h; break; } continue; }
+                if (c >= 0) { if (find(pa.id[c]) === find(l[0]) && (!L_[c] || L_[c] === lab)) { hit = h; break; } continue; }
                 seen.set(kk, h); qx.push(u); qy.push(v); }
               h++; }
             if (hit >= 0) { for (let w = hit; w >= 0 && seen.get(key(qx[w], qy[w])) !== -1; w = seen.get(key(qx[w], qy[w]))) info.links += E.add(qx[w], qy[w], lab); up[find(q)] = find(l[0]); }
@@ -199,6 +200,7 @@ function Outgoer(E, o) {
           const a = E.link(touch[k], touch[k + 1], touch[k + 2], touch[k + 3], b, reach, want);
           if (a >= 0) { info.links += a; up[find(cR)] = find(cI); } else if (reach === P.REACH) info.unjoined++;
         } }
+      E.parts(4);                                              // (counts the labels again, with the joins)
       E.pin(nfix, b - P.COLLAR, 2 * b); for (let q = 4 * Math.max(P.T, P.T1 >> (j - 1)); q > 0; q--) { E.relax(1); yield; }
       let got = get(0, E.count()); const gl = new Int32Array(E.memory.buffer, E.partlabels(), E.count()).slice(); E.parts(0);
       // The ring from here on is what lies outside the seam.  A strand of it that grew in over the seam (its label is the
