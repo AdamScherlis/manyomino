@@ -40,7 +40,7 @@ static unsigned char *tubeMap; static int tubeOn, coverOn; static double zmul = 
 static int OX[NW], OY[NW], nO;
 static int plab[NMAX], cutOn, labmax, lab0, boxOnly;
 static int labcnt[NMAX + 2];                   /* for the walk on a picture: cells carrying each of the labels there were at the start */                   /* which part of the finer shape a held cell belongs to; two held cells of different parts that touch are not joined */
-static int nfix, regOn, rin, rout;            /* the local walk: cells below nfix stay; cells are added only at rin <= r < rout */
+static int nfix, nidle, regOn, rin, rout;            /* the local walk: cells below nfix stay; cells are added only at rin <= r < rout */
 static u64 rs[4];
 static const int DX[4] = {1, 0, -1, 0}, DY[4] = {0, 1, 0, -1};
 static const int G8[8][4] = {{1,0,0,1},{0,-1,1,0},{-1,0,0,-1},{0,1,-1,0},{1,0,0,-1},{0,1,1,0},{-1,0,0,1},{0,-1,-1,0}};
@@ -83,7 +83,7 @@ void clear(void) { for (int i = 0; i < n; i++) grid[at(X[i], Y[i])] = 0; n = 0; 
 /* take the m cells written at xs(), ys() as the shape (after clear()) */
 void place(int m) {
   n = m; for (int i = 0; i < n; i++) grid[at(X[i], Y[i])] = i + 1;
-  nfix = 0; regOn = 0; frz = 0; tubeOn = 0; coverOn = 0; zmul = 1.0; cutOn = 0;
+  nfix = 0; nidle = 0; regOn = 0; frz = 0; tubeOn = 0; coverOn = 0; zmul = 1.0; cutOn = 0;
   for (int i = 0; i < NMAX; i++) plab[i] = 0;
 }
 /* Part labels, one per cell (write them after place(); 0 for a cell with none), and how they are heeded:
@@ -105,6 +105,8 @@ void parts(int on) {
 static inline int rad(int x, int y) { int a = x < 0 ? -x - 1 : x, b = y < 0 ? -y - 1 : y; return a > b ? a : b; }
 /* the first k cells are fixed for the local walk, which may add cells only at a <= r < b */
 void pin(int k, int a, int b) { nfix = k; regOn = 1; rin = a; rout = b; }
+/* the first k cells have no empty site beside them where a cell may be added, so the walk need never pick them (k <= the number fixed) */
+void idle(int k) { nidle = k < nfix ? k : nfix; }
 void hold(int x0, int y0, int x1, int y1, int on) { frz = on; fx0 = x0; fy0 = y0; fx1 = x1; fy1 = y1; }
 
 /* Are the neighbours (leaving out cell `ex`) of site (cx, cy) joined to each other inside the box of
@@ -324,7 +326,7 @@ static int covered(int qx, int qy, int ex) {
 static void gcMove(void) {
   const double Z = zmul / 4.0625696;
   nGC++;
-  int i = rbelow(n), r = (int)(rnext() >> 61), cx = X[i], cy = Y[i];
+  int i = nidle + rbelow(n - nidle), r = (int)(rnext() >> 61), cx = X[i], cy = Y[i];
   if (r < 4) {
     int sx = cx + DX[r], sy = cy + DY[r];
     if (occ(sx, sy) || n >= NMAX) return;
@@ -364,7 +366,7 @@ static void gcMove(void) {
 }
 /* the local walk for `quarters` quarter-sweeps (a sweep is one proposal per cell) */
 void relax(int quarters) {
-  for (int q = 0; q < quarters; q++) { int m = n / 4 > 1 ? n / 4 : 1; for (int k = 0; k < m; k++) gcMove(); }
+  for (int q = 0; q < quarters; q++) { int m = (n - nidle) / 4 > 1 ? (n - nidle) / 4 : 1; for (int k = 0; k < m; k++) gcMove(); }
 }
 
 /* cells added at random empty sites next to the shape, outside the held box, until there are `target` */

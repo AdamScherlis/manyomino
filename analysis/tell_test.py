@@ -16,6 +16,7 @@ For each: the area under the ROC curve on held-out pictures (0.5 = cannot tell, 
 and the share of pictures called correctly.
 
   python3 analysis/tell_test.py [TAG=final] [FOLDS=4] [SEED=1]     # reads zoomtest/e2e/TAG_pics.npz; with TAG final writes analysis/tell_test.json
+  python3 analysis/tell_test.py TAG FOLDS SEED null                # a control: the real pictures of half the samples against those of the other half
 """
 import sys, os, json, math
 import numpy as np
@@ -61,32 +62,49 @@ def logistic(X, y, l2=1.0, steps=400):
     return lambda Z: Z @ w + b
 
 
-def report(name, score, y, rng):
-    a = auc(score, y); n = len(y); boot = [auc(score[i], y[i]) for i in (rng.integers(n, size=n) for _ in range(300))]
-    acc = float(((score > np.median(score)) == (y == 1)).mean())
+def rank_auc(s, y):
+    """area under the ROC curve, ties counted as half"""
+    o = np.argsort(s, kind="stable"); r = np.empty(len(s)); r[o] = np.arange(1, len(s) + 1); ss = s[o]; i = 0
+    while i < len(s):
+        j = i
+        while j + 1 < len(s) and ss[j + 1] == ss[i]: j += 1
+        if j > i: r[o[i:j + 1]] = (i + j + 2) / 2
+        i = j + 1
+    n1 = y.sum(); n0 = len(y) - n1; return float((r[y == 1].sum() - n1 * (n1 + 1) / 2) / (n1 * n0))
+
+
+def report(name, score, y, rng, fold):
+    """scores from different folds come from different classifiers, so each fold's are centred on its own median first"""
+    score = score.copy()
+    for k in np.unique(fold): m = fold == k; score[m] = (score[m] - np.median(score[m])) / (score[m].std() + 1e-12)
+    a = rank_auc(score, y); n = len(y); boot = [rank_auc(score[i], y[i]) for i in (rng.integers(n, size=n) for _ in range(300))]
+    acc = float(((score > 0) == (y == 1)).mean())
     print(f"  {name:34s} AUC {a:.3f} ± {np.std(boot):.3f}   called correctly {100 * acc:.0f}%"); return {"auc": a, "se": float(np.std(boot)), "correct": acc}
 
 
 def main():
-    tag = sys.argv[1] if len(sys.argv) > 1 else "final"; K = int(sys.argv[2]) if len(sys.argv) > 2 else 4; seed = int(sys.argv[3]) if len(sys.argv) > 3 else 1
+    null = "null" in sys.argv; args = [a for a in sys.argv if a != "null"]
+    tag = args[1] if len(args) > 1 else "final"; K = int(args[2]) if len(args) > 2 else 4; seed = int(args[3]) if len(args) > 3 else 1
     d = np.load(os.path.join(ROOT, "zoomtest", "e2e", tag + "_pics.npz")); rng = np.random.default_rng(seed)
     real = np.unpackbits(d["real"], axis=-1).astype(bool); made = np.unpackbits(d["made"], axis=-1).astype(bool); grp = d["group"]; n = len(real)
     pics = np.concatenate([real, made]); y = np.r_[np.zeros(n), np.ones(n)]; g2 = np.r_[grp, grp]
     folds = rng.permutation(grp.max() + 1) % K; fold = folds[g2]
-    print(f"{tag}: {n} real and {n} made pictures of {real.shape[1]} cells across, from {grp.max() + 1} samples in {K} folds")
+    if null:                                          # a control: real pictures only, called "made" for half of the samples
+        half = rng.permutation(grp.max() + 1) % 2; pics = real; y = half[grp].astype(float); fold = folds[grp]; n = len(real) // 2
+    print(f"{tag}{' (control: real against real)' if null else ''}: {n} real and {n} made pictures of {real.shape[1]} cells across, from {grp.max() + 1} samples in {K} folds")
     out = {"pictures": int(n), "size": int(real.shape[1]), "folds": K}
     for name, wp in (("summary", True), ("summary, without the pieces", False)):
-        X = np.array([summary(p, wp) for p in pics]); s = np.zeros(2 * n)
+        X = np.array([summary(p, wp) for p in pics]); s = np.zeros(len(pics))
         for k in range(K):
             tr = fold != k; mu = X[tr].mean(0); sd = X[tr].std(0) + 1e-9; Z = np.clip((X - mu) / sd, -6, 6); s[~tr] = logistic(Z[tr], y[tr])(Z[~tr])
-        out[name] = report(name, s, y, rng)
-    NP = 3000; s = np.zeros(2 * n); P = [patches(p, NP, rng) for p in pics]
+        out[name] = report(name, s, y, rng, fold)
+    NP = 3000; s = np.zeros(len(pics)); P = [patches(p, NP, rng) for p in pics]
     for k in range(K):
         tr = np.nonzero(fold != k)[0]; X0 = np.vstack([P[i] for i in tr if y[i] == 0]); X1 = np.vstack([P[i] for i in tr if y[i] == 1])
         f = train_mlp(X0, X1, epochs=6, hidden=64, seed=seed + k)
         for i in np.nonzero(fold == k)[0]: s[i] = f(P[i]).mean()
-    out["patches"] = report("patches", s, y, rng)
-    if tag == "final": json.dump(out, open(os.path.join(ROOT, "analysis", "tell_test.json"), "w"), indent=1)
+    out["patches"] = report("patches", s, y, rng, fold)
+    if tag == "final" and not null: json.dump(out, open(os.path.join(ROOT, "analysis", "tell_test.json"), "w"), indent=1)
 
 
 if __name__ == "__main__":
