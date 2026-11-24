@@ -16,8 +16,20 @@ if E:
         t.append(f"| {k} | {g(a_)} | {g(b_)} | {100 * d:+.1f}% | {z:+.1f} |")
     zs = [r[4] for r in E["rows"] if "floating" not in r[0] and r[4] == r[4]]
     t += ["", f"Leaving out the rows for floating pieces (which a real picture cannot have), {sum(1 for z in zs if abs(z) > 2)} of {len(zs)} rows are beyond 2 s.e. and the largest is {max(abs(z) for z in zs):.1f}. "
-          f"Per level: {', '.join(f'{x:.1f}' for x in E['seconds'])} s; cells added as joins {', '.join(f'{x:.0f}' for x in E['links'])}; "
+          f"Per level: {', '.join(f'{x:.1f}' for x in E['seconds'])} s; cells added to join pieces of the inside that carry one label {', '.join(f'{x:.1f}' for x in E['links'])}; "
+          + (f"crossings at which the ring has no cell (counted at every stage) {', '.join(f'{x:.1f}' for x in E['loose'])}; " if "loose" in E else "") +
           f"parts in the finer world's box {', '.join(f'{x:.2f}' for x in E['fineParts'])}, kept apart in the new world {', '.join(f'{x:.2f}' for x in E['parts'])}."]
+    Wt = load("world_test.json")
+    if Wt:
+        L = Wt["layers"]; h = Wt["held to"]; bd = Wt["bands"]; f = lambda v: f"{v[0]:.1f} ± {v[1]:.1f}"; lo = 5
+        t += ["", f"The step from one world to the next (`analysis/world_test.py`, {Wt['roots']} roots): cells by layer round the root (layer r is the square ring at distance r) in real shapes at their "
+              f"own scale, in the same shapes halved, and in the first world made from them. Halving leaves one cell for {Wt['real cells per halved cell']:.3f} real ones. The sampler holds the layers below {h}.", "",
+              "| layer | " + " | ".join(str(k) for k in range(lo, len(L["real"]))) + " |", "|---|" + "---:|" * (len(L["real"]) - lo)]
+        for nm, k in (("real", "real"), ("halved", "halved"), ("world", "world")): t.append(f"| {nm} | " + " | ".join(f"{v:.2f}" for v in L[k][lo:]) + " |")
+        t += ["", f"In the box: real {f(bd['box']['real'])}, halved {f(bd['box']['halved'])}. In the ring: real {f(bd['ring']['real'])}, halved {f(bd['ring']['halved'])}, world {f(bd['ring']['world'])} "
+              f"(world less halved, root by root, {bd['ring']['world - halved'][0]:+.1f} ± {bd['ring']['world - halved'][1]:.1f}). In the first two layers drawn afresh: halved "
+              f"{f(bd['first two layers drawn afresh']['halved'])}, world {f(bd['first two layers drawn afresh']['world'])} ({bd['first two layers drawn afresh']['world - halved'][0]:+.2f} ± "
+              f"{bd['first two layers drawn afresh']['world - halved'][1]:.2f}). The finer world crosses the edge of the box at {Wt['crossings'][0]:.1f} sites of the halved one."]
     Tl = load("tell_test.json"); Tn = load("tell_null.json")
     if Tl:
         f = lambda k: f"{Tl[k]['auc']:.3f} ± {Tl[k]['se']:.3f} ({100 * Tl[k]['correct']:.0f}% of pictures called correctly)"
@@ -29,7 +41,7 @@ if E:
                  f"{Tn['patches']['auc']:.3f} ± {Tn['patches']['se']:.3f}." if Tn else "")]
     if Pt:
         t += ["", f"Where strands rejoin (`analysis/part_test.py`, {Pt['roots']} roots): of the pieces into which the cells within {Pt['radii'][0]} of a root fall, the number still separate within R cells, "
-              "in real samples and in the first world made from them (at R/2 of its own cells; in the box, touching cells of different parts are not joined).", "",
+              "in real samples and in the first world made from them (at R/2 of its own cells, and by the world's own rule for what is joined).", "",
               "| R | " + " | ".join(str(r) for r in Pt["radii"]) + " |", "|---|" + "---:|" * len(Pt["radii"]),
               "| real | " + " | ".join(f"{m:.2f} ± {e:.2f}" for m, e in Pt["real"]) + " |", "| made | " + " | ".join(f"{m:.2f} ± {e:.2f}" for m, e in Pt["made"]) + " |"]
     if Dp:
@@ -48,11 +60,11 @@ if E:
               f"{mean([r for r in rw[:h] if r['level'] > Dp['J']], 'tips'):.4f} and {mean(rw[h:], 'tips'):.4f}. A level takes {mean(rw, 's'):.1f} s, {mean(rw, 'sWorld'):.1f} s of it the sampler."]
     Dr = load("out_drift.json")
     if Dr:
-        q = Dr["quarters"]
-        t += ["", f"Worlds only, {Dr['chains']} runs of {Dr['levels']} levels (`scripts/out_drift.sh`), means over the four quarters of the levels: cells of the world in its ring "
-              + ", ".join(f"{m:.0f} ± {e:.0f}" for m, e in q["ring"]) + "; in its box " + ", ".join(f"{m:.0f} ± {e:.0f}" for m, e in q["box"]) + "; parts kept apart "
-              + ", ".join(f"{m:.1f}" for m, e in q["parts"]) + ". Real samples have " + (f"{[r for r in E['rows'] if r[0] == 'L1 cells'][0][1] / 2.95:.0f}" if E else "about 114")
-              + f" cells in the ring at any scale (the real count 16 to 32 cells from a root, over 2.95). The count falls by {100 * (1 - q['ring'][3][0] / q['ring'][0][0]):.0f}% from the "
-              "first quarter to the last; in blocks of 15 levels it wanders between 103 and 124, and whether that is a slow drift or chance these runs cannot say."]
+        REAL_BOX, REAL_RING = 61.11, 117.90      # cells of a real shape within 8, and from 8 to 16, of one of its cells (1,560 cells of 26 samples)
+        w = Dr["what"]; f = lambda k, d=1: f"{w[k]['mean']:.{d}f} ± {w[k]['se']:.{d}f}"; g = lambda k, d=1: f"{w[k]['slope per 100 levels']:+.{d}f} ± {w[k]['slope se']:.{d}f}"
+        t += ["", f"Worlds only, {Dr['chains']} runs of {Dr['levels']} levels from cells of {Dr['chains']} different samples (`scripts/out_drift.sh`). Means over all levels: cells of the world in "
+              f"its box {f('box')}, in its ring {f('ring')}, parts kept apart {f('parts', 2)}; real shapes have {REAL_BOX:.1f} and {REAL_RING:.1f} cells within 8 and from 8 to 16 cells of one of "
+              f"their cells (1,560 cells of 26 samples). A straight line through each run changes by {g('box')} cells per 100 levels in the box and {g('ring')} in the ring. "
+              f"Quarter by quarter the ring holds " + ", ".join(f"{v:.0f}" for v in w["ring"]["quarters"]) + "."]
     s2 = re.sub(r"<!-- zoom-out table -->.*?<!-- /zoom-out table -->", lambda m: "<!-- zoom-out table -->\n" + "\n".join(t) + "\n<!-- /zoom-out table -->", s2, flags=re.S)
 open(p, "w").write(s2)

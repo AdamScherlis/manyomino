@@ -19,7 +19,7 @@ for (let L = 1; L <= +levels; L++) {
     const k = v * G + u, nb = (pic[k - 1] ? 1 : 0) + (pic[k + 1] ? 1 : 0) + (pic[k - G] ? 1 : 0) + (pic[k + G] ? 1 : 0);
     if (pic[k]) { cells++; if (nb === 1) tips++; } else if (nb) empty++;
   }
-  rows.push({ level: L, s: pic.info.ms / 1000, sWorld: pic.info.msWorld / 1000, ringWorld, parts: pic.info.parts, links: pic.info.links, unjoined: pic.info.unjoined, cells, empty: empty / cells, tips: tips / cells });
+  rows.push({ level: L, s: pic.info.ms / 1000, sWorld: pic.info.msWorld / 1000, ringWorld, parts: pic.info.parts, links: pic.info.links, loose: pic.info.loose, cells, empty: empty / cells, tips: tips / cells });
   console.log(JSON.stringify(rows[rows.length - 1]));
 }
 fs.writeFileSync(path.join(__dirname, 'out_deep.json'), JSON.stringify({ J, G, levels: +levels, settings: OUT, rows }, null, 1));

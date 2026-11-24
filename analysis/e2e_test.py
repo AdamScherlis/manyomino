@@ -79,7 +79,11 @@ def features(g, levels):
 
 def one(job):
     k, fn, c, levels, seed, extra = job; tmp = os.path.join(ROOT, "zoomtest", "e2e", f"tmp_{os.getpid()}")
-    if subprocess.run([os.path.join(ROOT, "ball"), fn, tmp + "_b.bin", str(c[0]), str(c[1]), "32", "16000"], stderr=subprocess.DEVNULL).returncode: return None
+    ball = ["32", "16000"]                                                       # the start: everything out to r < 32, 16000 cells in all
+    for e in extra:
+        if e.startswith("ball="): ball = e[5:].split(",")                        # ball=R,N: everything out to r < R, N cells (for runs that only halve and refine)
+    extra = [e for e in extra if not e.startswith("ball=")]
+    if subprocess.run([os.path.join(ROOT, "ball"), fn, tmp + "_b.bin", str(c[0]), str(c[1])] + ball, stderr=subprocess.DEVNULL).returncode: return None
     # one level more is made than is looked at, so that the last ring looked at has a neighbour outside it, as on the page
     o = subprocess.run(["node", os.path.join(ROOT, "analysis", "out_run.js"), tmp + "_b.bin", tmp, str(levels + 1), str(seed + k), str(levels + 1)] + extra, capture_output=True, text=True)
     if o.returncode: return None
@@ -116,14 +120,14 @@ def main():
     json.dump({"roots": n, "levels": levels, "extra": extra, "rows": rows, "info": info}, open(os.path.join(ROOT, "zoomtest", "e2e", tag + ".json"), "w"))
     if tag == "final":                                                               # the run the page and the README quote
         mean = lambda k: [float(np.mean([i[L][k] for i in info])) for L in range(levels)]
-        json.dump({"roots": n, "samples": len(snaps), "levels": levels, "seed": seed, "rows": rows, "seconds": [m / 1000 for m in mean("ms")], "links": mean("links"), "unjoined": mean("unjoined"),
+        json.dump({"roots": n, "samples": len(snaps), "levels": levels, "seed": seed, "rows": rows, "seconds": [m / 1000 for m in mean("ms")], "links": mean("links"), "loose": mean("loose"),
                    "fineParts": mean("fineParts"), "parts": mean("parts")}, open(os.path.join(ROOT, "analysis", "e2e_test.json"), "w"), indent=1)
         np.savez_compressed(os.path.join(ROOT, "analysis", "e2e_pics.npz"), real=np.array([pics[i] for i in keep[:12]]), made=np.array([res[i][2] for i in keep[:12]]))
     print(f"{tag}: {n} roots, {levels} levels, {' '.join(extra)}")
     print(f"  {'':46s} {'real':>10s} {'made':>10s} {'diff':>8s} {'s.e.':>6s}")
     for k, r_, g, d, z in rows: print(f"  {k:46s} {r_:10.4g} {g:10.4g} {100 * d:+7.1f}% {z:+6.1f}")
     z = np.array([r[4] for r in rows]); print(f"  beyond 2 s.e.: {int((np.abs(z) > 2).sum())} of {len(z)}; largest {np.abs(z).max():.1f}")
-    for L in range(levels): print(f"  level {L + 1}: {np.mean([i[L]['ms'] for i in info]):.0f} ms, links {np.mean([i[L]['links'] for i in info]):.1f} cells, unjoined {np.mean([i[L]['unjoined'] for i in info]):.2f}, parts in the finer box {np.mean([i[L]['fineParts'] for i in info]):.2f}, after halving {np.mean([i[L]['partsHalved'] for i in info]):.2f}, after thinning {np.mean([i[L]['partsThinned'] for i in info]):.2f}, in the new world {np.mean([i[L]['parts'] for i in info]):.2f}")
+    for L in range(levels): print(f"  level {L + 1}: {np.mean([i[L]['ms'] for i in info]):.0f} ms, cells added as joins {np.mean([i[L]['links'] for i in info]):.1f}, crossings left with no cell of the ring {np.mean([i[L]['loose'] for i in info]):.2f}, parts in the finer box {np.mean([i[L]['fineParts'] for i in info]):.2f}, after halving {np.mean([i[L]['partsHalved'] for i in info]):.2f}, in the new world {np.mean([i[L]['parts'] for i in info]):.2f}")
 
 
 if __name__ == "__main__":

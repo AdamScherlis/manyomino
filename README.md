@@ -436,75 +436,92 @@ A *world* is a polyomino of 16,000 cells standing for the shape around the start
 (the root, at the origin) at one scale. The next world is made in two steps.
 
 1. *Halve.* Every 2×2 block holding a cell becomes a cell. That is too thick (2.1 cells of
-   the finer world for each of the coarser, where a typical polyomino has 2.95), so a local
-   walk thins it: the walk of the zoom in, with a weight of 0.65/λ per cell and two rules
-   that keep the result lined up with the finer world. No cell is added further than one
-   site from where the halved shape had cells, and none is taken away if that would leave
-   one of those sites with no cell on it or round it. Sixteen sweeps; the result no longer
-   changes after that. Run freely for 256 sweeps the same walk gives a typical polyomino
-   (`analysis/coarsen_test.py`: 22 samples of 1,024,000 cells halved four times against
-   sampled shapes of the same size, 5 of 60 observables beyond 2 s.e.), but it moves branch
-   tips by many sites: of the 11.3 cells it leaves on the edge of the box, 6.9 have no finer
-   cell under them and 2.8 have none next door either, so nothing drawn on that could be
-   joined to the finer picture. The rules and the weight are chosen to give the same
-   edge without that: 12.4 cells in 5.7 runs against 11.3 in 5.4, 2.2 of them with no finer
-   cell directly under them and none without one next door (`analysis/edge_test.py`, 156
-   roots; the weight was set before the smallest parts were merged, when the edge had 11.5
-   to 12.0 cells).
-2. *Extend.* The box of half-width 8 about the root is held and everything else is drawn
-   afresh: the world is padded back to 16,000 cells and the sampler runs for 100 moves per
-   cell. The padding is turned copies of the halved world hung on its own far tips. Padding
-   with cells at random sites next to the shape gives a blob that the sampler needs 400 to
-   800 moves per cell to undo; the copies are forgotten in about 50
-   (`analysis/mix_test.py`: after 100 moves per cell the cells in rings 1–1.5, 1.5–2, 2–2.5,
-   2.5–3 and 3–4 box half-widths from the root are 1.03, 1.00, 0.96, 0.96 and 0.98 of the
-   real counts, each ± 0.02, over 364 roots; the shortfall further out, 0.94 at 6–8
-   half-widths, is the finite size of a 16,000-cell world).
+   the finer world for each of the coarser, where a polyomino has 2.95), so a local walk
+   thins it: the walk of the zoom in, with a weight of 0.72/λ per cell and two rules that
+   keep the result lined up with the finer world. No cell is added further than one site
+   from where the halved shape had cells, and none is taken away if that would leave one of
+   those sites with no cell on it or round it. Sixteen sweeps; the result no longer changes
+   after that. The weight is the one at which halving divides the number of cells by 2.95,
+   and then the halved shape also has, layer by layer round the root, the number of cells a
+   real shape has round one of its cells (`analysis/world_test.py`, below). Run freely for
+   256 sweeps the same walk gives a typical polyomino too (`analysis/coarsen_test.py`), but
+   it moves branch tips by many sites, and nothing drawn on that could be joined to the
+   finer picture.
+2. *Extend.* The box of half-width 8 about the root is held, and with it the two layers of
+   the halved world just outside the box. Everything else is drawn afresh: the world is
+   padded back to 16,000 cells and the sampler runs for 100 moves per cell. The padding is
+   turned copies of the halved world hung on its own far tips. Padding with cells at random
+   sites next to the shape gives a blob that the sampler needs 400 to 800 moves per cell to
+   undo; the copies are forgotten in about 50 (`analysis/mix_test.py`).
+
+The two layers are held because the box alone does not say where the finer world crosses
+its edge, and the finer world knows: it has cells out there already. Drawn afresh, the
+layer outside the box has about the right number of cells, but not where the finer picture's
+strands end, and every crossing that does not line up has to be bridged in the picture.
 
 Two strands that pass within a cell of each other without meeting touch after halving. If
-the sampler took them for joined it would not join them anywhere else, and the picture,
+they were taken for joined, the sampler would not join them anywhere else, and the picture,
 which shows the finer world inside the box, would fall into pieces (with this left out, the
 largest connected piece of a generated picture held 40% of its cells where a real one holds
 84%). So each cell of the box carries the label of the part of the finer world it stands
-for (a part is a connected piece of what lies within twice the box), and in the box two
-touching cells with different labels are not joined: not for the thinning walk, which also
-keeps each part in one piece and keeps a cell of it by every site it had one, and not for
-the sampler, which therefore has to join the parts outside the box, as the real shape must.
-A part of three cells or fewer is merged with a part it touches. `outward_native cut`
-checks the sampler with such a pair of cells against a count of the shapes by exhaustive
-search (`analysis/held_count.py`), as `outward_native exact` and `held` do without labels
-and with a held box.
+for (a part is a connected piece of what lies within twice the box), and touching is not
+taken for joined in two cases. Two cells of the box with different labels are not joined.
+And a cell of the box is joined to a cell outside it only where the finer world really
+crosses the edge of the box between the two; those sites are marked. Both hold for the
+thinning walk (which also keeps each part in one piece inside the box, and never takes its
+last cell) and for the sampler, which therefore has to join the parts outside the box, as
+the real shape must. A part of three cells or fewer is merged with a part it touches.
+`outward_native cut` checks the sampler with a pair of labelled cells against a count of
+the shapes by exhaustive search (`analysis/held_count.py`), as `outward_native exact` and
+`held` do without labels and with a held box.
 
 The picture takes from each world only a ring, from its box out to twice the box; inside is
 the finer level's picture and outside the next one's. A world's cells are large on the
 screen, so the ring is refined six times (five on a small screen) by doubling and the local
 walk, as for the zoom in, but never below real cells (finer than that, a cell just becomes
-four). The walk runs for 16 sweeps at each stage and 64 at the last, which is the one that
-sets the fine texture: with 16 or 32 there a classifier can tell the texture from the real
-thing (below), with 64 it cannot, and more at the earlier stages only wears the ring away at
-its outer edge, where the walk runs against nothing. The details of a stage:
+four). The walk runs for 32 sweeps at the first stage, 16 at the later ones and 64 at the
+last, which is the one that sets the fine texture: with 16 or 32 there a classifier can tell
+the texture from the real thing (below), with 64 it cannot. Before the last stage a cell has
+weight 1.015/λ, not 1/λ. That is set by how many cells a stage should make of one: real
+shapes have 2.95. At 1/λ the walk settles at 2.94 inside the ring, as it does on a whole
+shape, but at 2.85 to 2.88 in the outer quarter, next to the edge it runs against, and three
+stages together gave 2.909 per stage where the real shapes in the test had 2.949: the third
+and fourth levels came out 4% and 7% short of cells. (Fewer sweeps before the last stage
+also make that up, but then a classifier looking at small windows tells the pictures from
+real ones 61% of the time, not 57%.) The details of a stage:
 
 - The finer level's picture at that resolution lies inside the ring and is held fixed,
   except for a collar inside the seam, which the walk may rework together with the ring. It
   is 12 cells deep, or a quarter of the way in where that is less. Without it each side is
-  relaxed against nothing and the seam comes out 15 to 35% short of cells and of joins. A
-  ring refined with nothing outside it is also thin along its outer edge: with a collar of
-  only 4 cells the outer 12 to 16 cells of each ring kept 6% too few cells and 3 to 6% too
-  few cells with a single neighbour, and a classifier looking at small windows called 66% of
-  pictures correctly; with 12 it does no better than on real against real.
+  relaxed against nothing and the seam comes out 15 to 35% short of cells and of joins.
 - The ring is a closed region: nothing beyond its outer edge counts for connectivity, and
-  where a strand leaves it one cell on the edge is held.
+  where a strand leaves it one cell on the edge is held (an *anchor*). At the next stage
+  the anchor is one of the cells that one became.
+- The ring and the inside are joined where the finer picture's strands leave *its* edge: at
+  the first stage wherever the finer world crosses the edge of the box, after that at the
+  finer picture's anchors. The cell of the ring facing an anchor is the same crossing seen
+  from the other side, and it too lies among the four cells its predecessor became, so the
+  two meet at every stage with nothing to be bridged. Until the last stage neither cell is
+  taken away, and the two sides are joined there and nowhere else: whatever else touches
+  across the seam only touches. (The inside is put in afresh at every stage, from the finer
+  level's own pictures, so a join that relied on a touch would be gone at the next. An
+  earlier version kept every touch as a join and bridged it again at each stage; the bridges
+  doubled in length each time, and that was where most of the extra cells at the seams came
+  from.) Where the thinning walk kept no cell at a crossing, the strand ends at the seam;
+  about a quarter of the crossings do.
 - Every cell of the inside carries the label of its piece (at the first stage, of its part
   of the world's box; after that the pieces of the finer picture take the labels of the
-  pieces they refine). Two pieces of the inside that only touch are not joined, a new cell
-  may not touch two of them, and the last cell of a piece is never taken away. Without
-  these the walk can drop a real join in favour of a touch that the next stage undoes.
-- Wherever the ring touched a piece of the inside at one stage it must touch the same piece
-  at the next, where the inside is a different, finer picture. Gaps of up to two cells are
-  filled; longer ones only if ring and piece would otherwise not be joined at all, and then
-  never by way of another piece. Pieces that carry one label are joined to each other.
-- A strand of the ring that has grown in over the seam is dropped at the next stage unless
-  it is all that joins two things.
+  pieces they refine). Until the last stage two pieces of the inside that only touch are
+  not joined and a new cell may not touch two of them. Pieces that carry one label are
+  joined to each other.
+- The ring may grow in over the seam, three cells deep, and what has grown in stays with
+  the ring at the next stage. The finer picture is short of cells in its last two rows
+  (they were refined against the edge), and this makes it up.
+- At the last stage there are no labels and nothing is held but the anchors of the ring:
+  the picture is the one that stays, so whatever touches is joined, and the walk by itself
+  never parts what is joined. With the labels kept, a real ring set beside a real inside
+  does not hold its counts (the collar ends 2% short, the two rows outside the seam 3%
+  over); without them it holds them to half a percent.
 
 On the page a level is drawn out to where the next level's reworked strip begins (three
 quarters of the way to its edge for the first two levels, so 12 of the 16 real cells of the
@@ -524,109 +541,127 @@ pictures from the real ones.
 
 | | real | made | difference | s.e. |
 |---|---:|---:|---:|---:|
-| cells 16-19 | 75.77 | 79.85 | +5.4% | +3.4 |
-| cells 19-23 | 62.14 | 63.07 | +1.5% | +0.7 |
-| cells 23-27 | 89.90 | 91.51 | +1.8% | +0.8 |
-| cells 27-32 | 125 | 131 | +5.1% | +2.1 |
-| cells 32-38 | 196 | 196 | -0.0% | -0.0 |
-| cells 38-45 | 220 | 212 | -3.8% | -1.5 |
-| cells 45-54 | 277 | 268 | -3.2% | -1.2 |
-| cells 54-64 | 376 | 389 | +3.5% | +1.3 |
-| cells 64-76 | 544 | 547 | +0.6% | +0.2 |
-| cells 76-91 | 635 | 625 | -1.6% | -0.6 |
-| cells 91-108 | 832 | 814 | -2.1% | -0.7 |
-| cells 108-128 | 1,086 | 1,082 | -0.4% | -0.1 |
-| cells 128-152 | 1,486 | 1,513 | +1.8% | +0.7 |
-| cells 152-181 | 1,878 | 1,843 | -1.9% | -0.7 |
-| cells 181-215 | 2,424 | 2,417 | -0.3% | -0.1 |
-| cells 215-256 | 3,176 | 3,101 | -2.3% | -0.8 |
-| L1 cells | 352 | 365 | +3.7% | +2.3 |
-| L1 with 1 neighbours (per cell) | 0.1705 | 0.1677 | -1.6% | -2.3 |
+| cells 16-19 | 75.77 | 76.65 | +1.2% | +0.9 |
+| cells 19-23 | 62.14 | 64.01 | +3.0% | +1.9 |
+| cells 23-27 | 89.90 | 90.75 | +0.9% | +0.5 |
+| cells 27-32 | 125 | 123 | -1.6% | -0.7 |
+| cells 32-38 | 196 | 194 | -1.1% | -0.5 |
+| cells 38-45 | 220 | 216 | -1.7% | -0.7 |
+| cells 45-54 | 277 | 271 | -2.2% | -0.9 |
+| cells 54-64 | 376 | 363 | -3.4% | -1.3 |
+| cells 64-76 | 544 | 525 | -3.3% | -1.2 |
+| cells 76-91 | 635 | 615 | -3.1% | -1.1 |
+| cells 91-108 | 832 | 813 | -2.3% | -0.8 |
+| cells 108-128 | 1,086 | 1,056 | -2.7% | -0.9 |
+| cells 128-152 | 1,486 | 1,440 | -3.1% | -1.1 |
+| cells 152-181 | 1,878 | 1,958 | +4.3% | +1.5 |
+| cells 181-215 | 2,424 | 2,551 | +5.3% | +1.7 |
+| cells 215-256 | 3,176 | 3,197 | +0.7% | +0.2 |
+| L1 cells | 352 | 354 | +0.5% | +0.4 |
+| L1 with 1 neighbours (per cell) | 0.1705 | 0.1689 | -0.9% | -1.5 |
 | L1 with 2 neighbours (per cell) | 0.5427 | 0.5445 | +0.3% | +0.9 |
-| L1 with 3 neighbours (per cell) | 0.2585 | 0.2586 | +0.0% | +0.1 |
-| L1 with 4 neighbours (per cell) | 0.0283 | 0.0292 | +3.1% | +1.3 |
-| L1 empty sites next to the shape (per cell) | 1.20 | 1.19 | -0.5% | -2.1 |
-| L1 full 2x2 (per cell) | 0.0698 | 0.0710 | +1.7% | +1.1 |
-| L1 boxes of 4 holding cells | 68.36 | 70.28 | +2.8% | +1.8 |
-| L1 seam: cells within 1 inside | 17.64 | 19.48 | +10.4% | +5.6 |
-| L1 seam: cells within 1 outside | 18.51 | 20.07 | +8.4% | +4.4 |
-| L1 seam: joins across | 9.64 | 10.73 | +11.3% | +6.1 |
-| L2 cells | 1,069 | 1,065 | -0.4% | -0.2 |
-| L2 with 1 neighbours (per cell) | 0.1691 | 0.1688 | -0.1% | -0.4 |
-| L2 with 2 neighbours (per cell) | 0.5436 | 0.5452 | +0.3% | +1.4 |
-| L2 with 3 neighbours (per cell) | 0.2588 | 0.2580 | -0.3% | -0.8 |
-| L2 with 4 neighbours (per cell) | 0.0285 | 0.0280 | -1.9% | -1.5 |
-| L2 empty sites next to the shape (per cell) | 1.19 | 1.19 | +0.1% | +1.0 |
-| L2 full 2x2 (per cell) | 0.0710 | 0.0699 | -1.6% | -1.7 |
-| L2 boxes of 4 holding cells | 207 | 206 | -0.3% | -0.1 |
-| L2 boxes of 16 holding cells | 26.69 | 26.61 | -0.3% | -0.2 |
-| L2 seam: cells within 2 inside | 51.73 | 55.17 | +6.6% | +2.4 |
-| L2 seam: cells within 2 outside | 53.63 | 55.72 | +3.9% | +1.4 |
-| L2 seam: joins across | 14.08 | 15.14 | +7.6% | +2.6 |
-| L3 cells | 3,096 | 3,067 | -0.9% | -0.4 |
-| L3 with 1 neighbours (per cell) | 0.1690 | 0.1689 | -0.0% | -0.2 |
-| L3 with 2 neighbours (per cell) | 0.5447 | 0.5447 | -0.0% | -0.0 |
-| L3 with 3 neighbours (per cell) | 0.2582 | 0.2578 | -0.1% | -0.6 |
-| L3 with 4 neighbours (per cell) | 0.0281 | 0.0285 | +1.5% | +1.9 |
-| L3 empty sites next to the shape (per cell) | 1.20 | 1.20 | +0.1% | +0.8 |
-| L3 full 2x2 (per cell) | 0.0704 | 0.0705 | +0.2% | +0.4 |
-| L3 boxes of 4 holding cells | 599 | 593 | -1.0% | -0.4 |
-| L3 boxes of 16 holding cells | 77.83 | 77.48 | -0.5% | -0.2 |
-| L3 seam: cells within 2 inside | 77.56 | 83.64 | +7.8% | +2.8 |
-| L3 seam: cells within 2 outside | 78.73 | 83.58 | +6.2% | +2.0 |
-| L3 seam: joins across | 20.85 | 22.47 | +7.8% | +2.6 |
-| L4 cells | 8,880 | 8,789 | -1.0% | -0.4 |
-| L4 with 1 neighbours (per cell) | 0.1691 | 0.1690 | -0.1% | -0.4 |
-| L4 with 2 neighbours (per cell) | 0.5441 | 0.5449 | +0.2% | +2.2 |
-| L4 with 3 neighbours (per cell) | 0.2584 | 0.2577 | -0.3% | -2.5 |
-| L4 with 4 neighbours (per cell) | 0.0284 | 0.0284 | +0.0% | +0.0 |
-| L4 empty sites next to the shape (per cell) | 1.19 | 1.20 | +0.2% | +4.9 |
-| L4 full 2x2 (per cell) | 0.0707 | 0.0703 | -0.5% | -1.7 |
-| L4 boxes of 4 holding cells | 1,728 | 1,712 | -0.9% | -0.4 |
-| L4 boxes of 16 holding cells | 226 | 225 | -0.3% | -0.1 |
-| L4 seam: cells within 2 inside | 113 | 125 | +9.9% | +3.1 |
-| L4 seam: cells within 2 outside | 114 | 124 | +9.1% | +2.9 |
-| L4 seam: joins across | 30.33 | 33.10 | +9.1% | +2.8 |
-| floating pieces | 0.0000 | 0.0026 | +0.0% | +1.0 |
+| L1 with 3 neighbours (per cell) | 0.2585 | 0.2585 | -0.0% | -0.0 |
+| L1 with 4 neighbours (per cell) | 0.0283 | 0.0281 | -0.7% | -0.3 |
+| L1 empty sites next to the shape (per cell) | 1.20 | 1.20 | +0.0% | +0.1 |
+| L1 full 2x2 (per cell) | 0.0698 | 0.0709 | +1.5% | +0.9 |
+| L1 boxes of 4 holding cells | 68.36 | 68.79 | +0.6% | +0.5 |
+| L1 seam: cells within 1 inside | 17.64 | 17.46 | -1.0% | -0.5 |
+| L1 seam: cells within 1 outside | 18.51 | 18.32 | -1.0% | -0.6 |
+| L1 seam: joins across | 9.64 | 9.64 | +0.0% | +0.0 |
+| L2 cells | 1,069 | 1,044 | -2.3% | -1.1 |
+| L2 with 1 neighbours (per cell) | 0.1691 | 0.1696 | +0.3% | +0.9 |
+| L2 with 2 neighbours (per cell) | 0.5436 | 0.5439 | +0.0% | +0.2 |
+| L2 with 3 neighbours (per cell) | 0.2588 | 0.2582 | -0.2% | -0.6 |
+| L2 with 4 neighbours (per cell) | 0.0285 | 0.0283 | -0.7% | -0.6 |
+| L2 empty sites next to the shape (per cell) | 1.19 | 1.20 | +0.2% | +1.8 |
+| L2 full 2x2 (per cell) | 0.0710 | 0.0705 | -0.7% | -0.8 |
+| L2 boxes of 4 holding cells | 207 | 202 | -2.2% | -1.1 |
+| L2 boxes of 16 holding cells | 26.69 | 26.23 | -1.7% | -1.0 |
+| L2 seam: cells within 2 inside | 51.73 | 50.39 | -2.6% | -1.0 |
+| L2 seam: cells within 2 outside | 53.63 | 53.35 | -0.5% | -0.2 |
+| L2 seam: joins across | 14.08 | 13.79 | -2.1% | -0.7 |
+| L3 cells | 3,096 | 3,010 | -2.8% | -1.2 |
+| L3 with 1 neighbours (per cell) | 0.1690 | 0.1691 | +0.1% | +0.3 |
+| L3 with 2 neighbours (per cell) | 0.5447 | 0.5440 | -0.1% | -1.1 |
+| L3 with 3 neighbours (per cell) | 0.2582 | 0.2584 | +0.1% | +0.3 |
+| L3 with 4 neighbours (per cell) | 0.0281 | 0.0285 | +1.5% | +1.8 |
+| L3 empty sites next to the shape (per cell) | 1.20 | 1.20 | +0.0% | +0.2 |
+| L3 full 2x2 (per cell) | 0.0704 | 0.0709 | +0.8% | +1.4 |
+| L3 boxes of 4 holding cells | 599 | 582 | -2.8% | -1.2 |
+| L3 boxes of 16 holding cells | 77.83 | 75.84 | -2.6% | -1.2 |
+| L3 seam: cells within 2 inside | 77.56 | 72.55 | -6.5% | -2.1 |
+| L3 seam: cells within 2 outside | 78.73 | 75.04 | -4.7% | -1.5 |
+| L3 seam: joins across | 20.85 | 19.26 | -7.6% | -2.4 |
+| L4 cells | 8,880 | 9,075 | +2.2% | +0.9 |
+| L4 with 1 neighbours (per cell) | 0.1691 | 0.1691 | -0.0% | -0.3 |
+| L4 with 2 neighbours (per cell) | 0.5441 | 0.5444 | +0.1% | +0.8 |
+| L4 with 3 neighbours (per cell) | 0.2584 | 0.2580 | -0.1% | -1.2 |
+| L4 with 4 neighbours (per cell) | 0.0284 | 0.0285 | +0.5% | +1.2 |
+| L4 empty sites next to the shape (per cell) | 1.19 | 1.20 | +0.1% | +1.9 |
+| L4 full 2x2 (per cell) | 0.0707 | 0.0707 | -0.0% | -0.1 |
+| L4 boxes of 4 holding cells | 1,728 | 1,765 | +2.1% | +0.8 |
+| L4 boxes of 16 holding cells | 226 | 230 | +1.7% | +0.7 |
+| L4 seam: cells within 2 inside | 113 | 102 | -9.8% | -3.0 |
+| L4 seam: cells within 2 outside | 114 | 103 | -9.2% | -2.9 |
+| L4 seam: joins across | 30.33 | 26.89 | -11.3% | -3.4 |
+| floating pieces | 0.0000 | 0.0051 | +0.0% | +1.4 |
 | floating pieces of 10 or more | 0.0000 | 0.0000 | +0.0% | +0.0 |
-| cells in floating pieces | 0.0000 | 0.0077 | +0.0% | +1.0 |
-| L1 floating pieces first met in this ring (per cell) | 0.0000 | 0.0000 | +inf% | +1.1 |
-| pieces | 15.68 | 15.49 | -1.2% | -0.3 |
-| pieces of 2 to 9 cells | 5.19 | 4.93 | -5.1% | -1.2 |
-| pieces of 10 to 99 | 4.36 | 4.44 | +1.8% | +0.4 |
-| pieces of 100 or more | 3.09 | 3.19 | +3.5% | +0.9 |
-| single cells | 3.04 | 2.94 | -3.5% | -0.7 |
-| share in the largest piece | 0.8564 | 0.8454 | -1.3% | -1.2 |
-| cells | 13,662 | 13,555 | -0.8% | -0.4 |
+| cells in floating pieces | 0.0000 | 0.0103 | +0.0% | +1.4 |
+| pieces | 15.68 | 16.36 | +4.3% | +1.2 |
+| pieces of 2 to 9 cells | 5.19 | 5.24 | +0.9% | +0.2 |
+| pieces of 10 to 99 | 4.36 | 4.81 | +10.4% | +2.1 |
+| pieces of 100 or more | 3.09 | 3.20 | +3.6% | +0.9 |
+| single cells | 3.04 | 3.12 | +2.4% | +0.4 |
+| share in the largest piece | 0.8564 | 0.8392 | -2.0% | -1.9 |
+| cells | 13,662 | 13,736 | +0.5% | +0.3 |
 
-Leaving out the rows for floating pieces (which a real picture cannot have), 19 of 70 rows are beyond 2 s.e. and the largest is 6.1. Per level: 2.7, 2.7, 2.8, 3.0 s; cells added as joins 4, 16, 39, 89; parts in the finer world's box 3.78, 3.53, 3.43, 3.53, kept apart in the new world 2.88, 2.71, 2.64, 2.69.
+Leaving out the rows for floating pieces (which a real picture cannot have), 6 of 70 rows are beyond 2 s.e. and the largest is 3.4. Per level: 4.5, 4.5, 4.7, 5.1 s; cells added to join pieces of the inside that carry one label 0.6, 2.2, 4.7, 11.4; crossings at which the ring has no cell (counted at every stage) 2.4, 4.9, 6.7, 8.8; parts in the finer world's box 3.78, 3.62, 3.45, 3.51, kept apart in the new world 2.88, 2.78, 2.65, 2.63.
 
-Classifiers trained to tell the made pictures from the real ones (`analysis/tell_test.py`; 390 of each, scored on pictures from samples they were not trained on; area under the ROC curve, 0.5 = cannot tell): a logistic regression on about 150 summary numbers per picture, 0.631 ± 0.020 (59% of pictures called correctly); the same without the numbers that describe how the picture falls into pieces, 0.637 ± 0.020 (59% of pictures called correctly); a small network looking at 9×9 windows centred on cells, 3,000 per picture, 0.585 ± 0.021 (55% of pictures called correctly). The same classifiers set to tell the real pictures of half the samples from those of the other half, where there is nothing to find, score 0.507 ± 0.030, 0.499 ± 0.030 and 0.577 ± 0.031.
+The step from one world to the next (`analysis/world_test.py`, 520 roots): cells by layer round the root (layer r is the square ring at distance r) in real shapes at their own scale, in the same shapes halved, and in the first world made from them. Halving leaves one cell for 2.960 real ones. The sampler holds the layers below 10.
 
-Where strands rejoin (`analysis/part_test.py`, 208 roots): of the pieces into which the cells within 16 of a root fall, the number still separate within R cells, in real samples and in the first world made from them (at R/2 of its own cells; in the box, touching cells of different parts are not joined).
+| layer | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| real | 9.45 | 10.43 | 11.46 | 12.09 | 12.96 | 13.89 | 14.73 | 15.20 | 15.79 | 16.11 | 16.64 |
+| halved | 9.51 | 10.54 | 11.21 | 11.89 | 12.50 | 13.65 | 14.40 | 14.97 | 16.01 | 16.87 | 17.62 |
+| world | 9.51 | 10.54 | 11.21 | 11.89 | 12.50 | 13.49 | 14.39 | 15.04 | 16.02 | 16.65 | 17.28 |
+
+In the box: real 61.0 ± 0.7, halved 60.1 ± 0.7. In the ring: real 117.4 ± 1.7, halved 117.9 ± 1.7, world 117.3 ± 1.8 (world less halved, root by root, -0.7 ± 1.2). In the first two layers drawn afresh: halved 28.1 ± 0.5, world 27.9 ± 0.5 (-0.17 ± 0.36). The finer world crosses the edge of the box at 9.1 sites of the halved one.
+
+Classifiers trained to tell the made pictures from the real ones (`analysis/tell_test.py`; 390 of each, scored on pictures from samples they were not trained on; area under the ROC curve, 0.5 = cannot tell): a logistic regression on about 150 summary numbers per picture, 0.577 ± 0.019 (55% of pictures called correctly); the same without the numbers that describe how the picture falls into pieces, 0.569 ± 0.020 (55% of pictures called correctly); a small network looking at 9×9 windows centred on cells, 3,000 per picture, 0.604 ± 0.021 (59% of pictures called correctly). The same classifiers set to tell the real pictures of half the samples from those of the other half, where there is nothing to find, score 0.507 ± 0.030, 0.499 ± 0.030 and 0.577 ± 0.031.
+
+Where strands rejoin (`analysis/part_test.py`, 208 roots): of the pieces into which the cells within 16 of a root fall, the number still separate within R cells, in real samples and in the first world made from them (at R/2 of its own cells, and by the world's own rule for what is joined).
 
 | R | 16 | 18 | 20 | 24 | 32 | 48 | 64 |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | real | 3.73 ± 0.13 | 2.19 ± 0.08 | 1.76 ± 0.06 | 1.39 ± 0.04 | 1.18 ± 0.03 | 1.05 ± 0.01 | 1.03 ± 0.01 |
-| made | 2.82 ± 0.10 | 1.91 ± 0.07 | 1.54 ± 0.05 | 1.32 ± 0.04 | 1.16 ± 0.03 | 1.07 ± 0.02 | 1.03 ± 0.01 |
+| made | 2.84 ± 0.10 | 1.96 ± 0.07 | 1.67 ± 0.05 | 1.36 ± 0.04 | 1.13 ± 0.02 | 1.06 ± 0.02 | 1.03 ± 0.01 |
 
-Run 40 levels out at the page's resolution (`analysis/out_deep.js`): first half of the levels against second half, cells of the world in its ring 107 and 117; parts kept apart 2.25 and 2.95; and, from level 7 on, where the picture is as fine as it gets, cells in the finished picture of the ring 60,878 and 74,812, empty sites next to the shape per cell 1.1940 and 1.1952, cells with one neighbour per cell 0.1698 and 0.1692. A level takes 6.3 s, 2.6 s of it the sampler.
+Run 40 levels out at the page's resolution (`analysis/out_deep.js`): first half of the levels against second half, cells of the world in its ring 99 and 109; parts kept apart 2.15 and 2.30; and, from level 7 on, where the picture is as fine as it gets, cells in the finished picture of the ring 62,562 and 73,557, empty sites next to the shape per cell 1.1947 and 1.1948, cells with one neighbour per cell 0.1689 and 0.1694. A level takes 8.6 s, 4.1 s of it the sampler.
 
-Worlds only, 4 runs of 120 levels (`scripts/out_drift.sh`), means over the four quarters of the levels: cells of the world in its ring 120 ± 2, 117 ± 7, 113 ± 8, 110 ± 2; in its box 61 ± 1, 59 ± 3, 57 ± 4, 56 ± 1; parts kept apart 2.9, 2.6, 2.5, 2.5. Real samples have 119 cells in the ring at any scale (the real count 16 to 32 cells from a root, over 2.95). The count falls by 8% from the first quarter to the last; in blocks of 15 levels it wanders between 103 and 124, and whether that is a slow drift or chance these runs cannot say.
+Worlds only, 8 runs of 240 levels from cells of 8 different samples (`scripts/out_drift.sh`). Means over all levels: cells of the world in its box 60.3 ± 0.8, in its ring 116.6 ± 1.6, parts kept apart 2.68 ± 0.04; real shapes have 61.1 and 117.9 cells within 8 and from 8 to 16 cells of one of their cells (1,560 cells of 26 samples). A straight line through each run changes by +0.3 ± 1.0 cells per 100 levels in the box and +0.4 ± 2.0 in the ring. Quarter by quarter the ring holds 116, 117, 115, 118.
 <!-- /zoom-out table -->
 
-What is not right, as far as these tests show. The seams: the layers of cells on either side
-of each seam hold 4 to 11% too many, with as many more joins across, and that is what the
-summary classifier finds (59% of pictures called correctly, 51% on the control). Elsewhere
-the count of cells in each ring is within 4%, local counts per cell within 2% (most within
-0.5%), the pieces a picture falls into within 1.2 s.e., and one of 390 pictures
-had a piece that neither held the root nor reached the edge. Further, the halving is tuned
-(the weight, and the size below which a part is merged), not derived; a world is finite; and
-beyond four or five levels there is no real sample large enough to compare with, only the
-check that nothing drifts. In shapes of a dozen cells the sampler
-with a held box cannot reach a few shapes in which the only path between two held cells has
-no cell to spare (11 of 1,801 at 11 cells, found by the same exhaustive count), and below 12
-cells it cannot take that path round the other side of the box; neither matters at 16,000.
+What is not right, as far as these tests show. The deeper seams: at the third and fourth
+the two rows of cells on either side hold 5 to 10% too few, with 8 to 11% too few joins
+across (up to 3.4 s.e.), where the first two seams are within 1 s.e. on every count. Until
+the last stage a strand of the finer picture is joined to the ring only at its anchor, and
+a quarter of the anchors have no cell of the ring facing them; what else comes to touch at
+the last stage does not make up the number a real seam has when the ring has been through
+three or four stages. The summary classifier calls 55% of pictures correctly where the
+control gives 51%. (An earlier version had the opposite fault, 4 to 11% too many cells and
+joins at every seam, and was called correctly 59% of the time.) Elsewhere the count of
+cells in each ring is within 3%, local counts per cell within 1.5% (most within 0.5%), the
+pieces a picture falls into within 2.1 s.e., and two of 390 pictures had a stray pair of cells
+that neither held the root nor reached the edge. Further, two numbers are set, not derived:
+the weight of the thinning walk and the weight of the refining walk before its last stage,
+both by the requirement that a shape at twice the scale has 2.95 times the cells (and the
+size below which a part is merged is chosen). A world is finite: 16 to 32 of its cells from
+the root it holds 3% fewer cells than a real shape. And beyond four or five levels there is
+no real sample large enough to compare with, only the check that nothing drifts. In shapes
+of a dozen cells the sampler with a held box cannot reach a few shapes in which the only
+path between two held cells has no cell to spare (11 of 1,801 at 11 cells, found by the same
+exhaustive count), and below 12 cells it cannot take that path round the other side of the
+box; neither matters at 16,000.
 
 Three checks (`scripts/zoom_relax.sh`, `scripts/zoom_test.sh`; tables by
 `analysis/zoom_report.py`):
@@ -713,7 +748,7 @@ ffmpeg -i out/silent.mp4 -i music.wav -c:v copy -c:a aac -shortest video.mp4
 ```
 src/manyomino.cpp      the sampler
 src/zoom.cpp           refinement to twice the resolution (cells added and removed at weight 1/λ)
-src/outward.c          the engine of the page's zoom out: the sampler with a held box, halving, joins (builds to page/outward.wasm)
+src/outward.c          the engine of the page's zoom out: the sampler with a held box, halving, the walks on a picture (builds to page/outward.wasm)
 src/ball.cpp           a connected piece of a sample around a cell, for the tests of the zoom out
 src/features.h         60 shape observables (geometry, local counts, cut structure, graph distances)
 src/enumerate.cpp      exact averages of them over every polyomino of n cells
