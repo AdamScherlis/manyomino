@@ -51,6 +51,19 @@ if E:
             k = r["stages finer than the pixel"]
             t.append(f"| {2 ** k}{' (real cells)' if r['real cells'] else ''} | {r['lit pixels'][0]:.0f} ± {r['lit pixels'][1]:.0f} | {100 * r['lit, of real']:.0f}% | {r['spread of brightness']:.2f} | "
                      + ("" if r["real cells"] or r["correlation with real"] is None or r["correlation with real"] != r["correlation with real"] else f"{r['correlation with real']:.2f}") + f" | {r['lit here only']:.0f} | {r['lit in the real only']:.0f} |")
+    Mm = load("mass_model.json")
+    if Mm:
+        t += ["", f"Whether a table could supply what the dots lack (`analysis/mass_model.py`): for every dot and every empty site beside one, a number of real cells is drawn from what real shapes have "
+              f"at sites with the same dots around them (tables from {Mm['roots learnt from']} roots, drawn for {Mm['roots drawn for']} others). Lit pixels against the real cells' lit pixels, and the "
+              "spread of brightness, for the draws and for the dots as they are shown now.", "",
+              "| a dot, in real cells | a pixel, in dots | lit: drawn | lit: dots | spread: real | drawn | dots |", "|---:|---:|---:|---:|---:|---:|---:|"]
+        for r in Mm["rows"]: t.append(f"| {r['dot, in real cells']} | {r['pixel, in dots']} | {100 * r['drawn']['lit, against real']:+.1f}% | {100 * r['dots']['lit, against real']:+.1f}% | "
+                                      f"{r['real']['spread of brightness']:.2f} | {r['drawn']['spread of brightness']:.2f} | {r['dots']['spread of brightness']:.2f} |")
+    Rp = load("ring_pop.json")
+    if Rp and "final made" in Rp["runs"]:
+        fm = Rp["runs"]["final made"]; fr = Rp["runs"]["final real"]; pc = lambda v, z: ", ".join(f"{a:+.1f}% ({b:+.1f})" for a, b in zip(v, z))
+        t += ["", f"Rings against the average real ring (`analysis/ring_pop.py`; {Rp['real roots']} real roots, each ring's average known to {max(Rp['s.e. %']):.1f}%): the made rings of the full run "
+              f"{pc(fm['against all real roots, %'], fm['in s.e.'])}; the real rings of the same {fm['roots']} roots {pc(fr['against all real roots, %'], fr['in s.e.'])} (in brackets, standard errors)."]
     Wt = load("world_test.json")
     if Wt:
         L = Wt["layers"]; h = Wt["held to"]; bd = Wt["bands"]; f = lambda v: f"{v[0]:.1f} ± {v[1]:.1f}"; lo = 5

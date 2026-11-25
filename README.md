@@ -680,6 +680,22 @@ Far out (`analysis/mass_test.py`, 130 roots): real shapes counted in pixels 8 ce
 | 4 | 307 ± 7 | 93% | 0.53 | 0.77 | 11 | 34 |
 | 8 (real cells) | 330 ± 7 | 100% | 0.60 |  | 0 | 0 |
 
+Whether a table could supply what the dots lack (`analysis/mass_model.py`): for every dot and every empty site beside one, a number of real cells is drawn from what real shapes have at sites with the same dots around them (tables from 130 roots, drawn for 130 others). Lit pixels against the real cells' lit pixels, and the spread of brightness, for the draws and for the dots as they are shown now.
+
+| a dot, in real cells | a pixel, in dots | lit: drawn | lit: dots | spread: real | drawn | dots |
+|---:|---:|---:|---:|---:|---:|---:|
+| 2 | 1 | +0.2% | -28.7% | 0.41 | 0.41 | 0.00 |
+| 2 | 2 | +8.2% | -15.7% | 0.54 | 0.56 | 0.41 |
+| 2 | 4 | +4.2% | -7.3% | 0.60 | 0.61 | 0.53 |
+| 4 | 1 | +0.0% | -40.0% | 0.54 | 0.54 | 0.00 |
+| 4 | 2 | +9.7% | -22.2% | 0.60 | 0.61 | 0.41 |
+| 4 | 4 | +7.0% | -10.5% | 0.63 | 0.66 | 0.53 |
+| 8 | 1 | -0.2% | -44.8% | 0.60 | 0.60 | 0.00 |
+| 8 | 2 | +9.6% | -24.8% | 0.63 | 0.64 | 0.41 |
+| 8 | 4 | +7.4% | -11.3% | 0.64 | 0.67 | 0.52 |
+
+Rings against the average real ring (`analysis/ring_pop.py`; 2600 real roots, each ring's average known to 0.7%): the made rings of the full run -0.1% (-0.1), -3.8% (-2.1), -4.8% (-2.7), -2.6% (-1.5), -3.1% (-1.7); the real rings of the same 390 roots +0.0% (+0.0), +1.6% (+0.8), +1.0% (+0.5), +0.2% (+0.1), +1.1% (+0.6) (in brackets, standard errors).
+
 The step from one world to the next (`analysis/world_test.py`, 520 roots): cells by layer round the root (layer r is the square ring at distance r) in real shapes at their own scale, in the same shapes halved, and in the first world made from them. Halving leaves one cell for 2.960 real ones. The sampler holds the layers below 10.
 
 | layer | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 |
@@ -706,15 +722,17 @@ Worlds only, 8 runs of 240 levels from cells of 8 different samples (`scripts/ou
 
 What is not right, as far as these tests show.
 
-- *Rings beyond the first are a few per cent short in the full run.* They hold 3 to 6% fewer
-  cells than the real ones (two of the four beyond 2 s.e.), more toward their outer edges,
-  where the run that only refines has every ring within about 1%. The earlier version's
-  raised weight had been making up for this along with its own edges; now that the
-  refining is unbiased, it shows. Where it comes from is not settled. Worlds drawn by the
-  sampler, set layer by layer against halved real shapes for the same 120 roots, agree to
-  within a noise of 3 to 4%, which is not sharp enough to say; and the 390 roots of the
-  full run happen to have 4% more real cells in their second ring than the average over
-  all the samples.
+- *Rings beyond the first are a few per cent short in the full run.* Set against the
+  average real ring over 2,600 roots they hold 3.8, 4.8, 2.6 and 3.1% too few cells (1.5 to
+  2.7 s.e. each; `analysis/ring_pop.py`), more toward their outer edges, where the run that
+  only refines has every ring within about 1%. The earlier version's raised weight had been
+  making up for this along with its own edges; now that the refining is unbiased, it shows.
+  Where it comes from is not settled. It is not the refining: counted on 200 roots, a stage
+  makes as many cells of one with the sampler as without (2.92 and 2.92, then 2.97 and
+  2.98, at the second level's two stages; 2.87 and 2.88, 2.95 and 2.95, 2.95 and 2.96 at
+  the third's; each known to about 0.02). That leaves the worlds, and worlds drawn by the
+  sampler, set layer by layer against halved real shapes for the same roots, agree only to
+  within a noise of 3 to 4%, which cannot show a difference of 3.
 - *Seams.* Within about 5% on every count in both runs, and no seam count of the full run is
   beyond 2 s.e.; the joins across are 2 to 3% low at all five seams there (each within
   1.5 s.e.), which goes with the rings being short. In the run that only refines, the two
@@ -749,8 +767,14 @@ What is not right, as far as these tests show.
   follows theirs with r = 0.33; at four per side, 93% and 0.77 (`analysis/mass_test.py`,
   table above). So between the sixth level and about the ninth a real zoom would go on
   changing, from the look of cells to the look of the limit, and the page's does not. To
-  follow it each texel would have to carry the number of real cells it stands for; that is
-  not done.
+  follow it each texel would have to carry the number of real cells it stands for. A table
+  goes about halfway (`analysis/mass_model.py`, above): drawing that number for each dot
+  and each empty site beside one, from what real shapes have at sites with the same dots
+  around them, gets the counts dot by dot right by construction, but in pixels two dots
+  wide it lights 8 to 10% too many where the dots alone light 16 to 25% too few. The draws
+  are independent and the real cells beside a strand are not: they lie along some strands
+  and not along others. Doing it properly means refining three or four more times below the
+  pixel, 26 times the cells or more, or a model that keeps that coherence; neither is done.
 - *Numbers that are set, not derived:* the weight of the thinning walk and the two weights
   of the refining walk, all by the requirement that a shape at twice the scale has 2.95
   times the cells; the size below which a part is merged; the depth of the strip and of

@@ -1,0 +1,169 @@
+{
+ "roots learnt from": 130,
+ "roots drawn for": 130,
+ "samples": 26,
+ "rows": [
+  {
+   "dot, in real cells": 2,
+   "pixel, in dots": 1,
+   "real": {
+    "lit pixels": 4179.992307692308,
+    "spread of brightness": 0.4082047332448801
+   },
+   "drawn": {
+    "lit pixels": 4188.930769230769,
+    "spread of brightness": 0.40822236144222934,
+    "lit, against real": 0.0021383918630693
+   },
+   "dots": {
+    "lit pixels": 2979.776923076923,
+    "spread of brightness": 0.0,
+    "lit, against real": -0.28713339553440476
+   }
+  },
+  {
+   "dot, in real cells": 2,
+   "pixel, in dots": 2,
+   "real": {
+    "lit pixels": 1699.1461538461538,
+    "spread of brightness": 0.5369875930711092
+   },
+   "drawn": {
+    "lit pixels": 1838.8384615384616,
+    "spread of brightness": 0.5552320086671351,
+    "lit, against real": 0.08221323832332095
+   },
+   "dots": {
+    "lit pixels": 1432.2846153846153,
+    "spread of brightness": 0.40792057241668156,
+    "lit, against real": -0.1570562590260266
+   }
+  },
+  {
+   "dot, in real cells": 2,
+   "pixel, in dots": 4,
+   "real": {
+    "lit pixels": 628.4384615384615,
+    "spread of brightness": 0.599712136999519
+   },
+   "drawn": {
+    "lit pixels": 654.6615384615385,
+    "spread of brightness": 0.6146847255218496,
+    "lit, against real": 0.04172735840973352
+   },
+   "dots": {
+    "lit pixels": 582.4461538461538,
+    "spread of brightness": 0.5316857740756104,
+    "lit, against real": -0.07318506187497709
+   }
+  },
+  {
+   "dot, in real cells": 4,
+   "pixel, in dots": 1,
+   "real": {
+    "lit pixels": 1699.1461538461538,
+    "spread of brightness": 0.5369875930711092
+   },
+   "drawn": {
+    "lit pixels": 1699.2076923076922,
+    "spread of brightness": 0.5361344739820119,
+    "lit, against real": 3.621728560498916e-05
+   },
+   "dots": {
+    "lit pixels": 1020.2692307692307,
+    "spread of brightness": 0.0,
+    "lit, against real": -0.39954004047281666
+   }
+  },
+  {
+   "dot, in real cells": 4,
+   "pixel, in dots": 2,
+   "real": {
+    "lit pixels": 628.4384615384615,
+    "spread of brightness": 0.599712136999519
+   },
+   "drawn": {
+    "lit pixels": 689.1692307692308,
+    "spread of brightness": 0.6138244733707511,
+    "lit, against real": 0.09663757543116658
+   },
+   "dots": {
+    "lit pixels": 488.96153846153845,
+    "spread of brightness": 0.40876064947197677,
+    "lit, against real": -0.22194205417579593
+   }
+  },
+  {
+   "dot, in real cells": 4,
+   "pixel, in dots": 4,
+   "real": {
+    "lit pixels": 221.14615384615385,
+    "spread of brightness": 0.6303292291203635
+   },
+   "drawn": {
+    "lit pixels": 236.72307692307692,
+    "spread of brightness": 0.6613266560516918,
+    "lit, against real": 0.07043723259939472
+   },
+   "dots": {
+    "lit pixels": 198.01538461538462,
+    "spread of brightness": 0.5264229984960215,
+    "lit, against real": -0.10459494243278022
+   }
+  },
+  {
+   "dot, in real cells": 8,
+   "pixel, in dots": 1,
+   "real": {
+    "lit pixels": 628.4384615384615,
+    "spread of brightness": 0.599712136999519
+   },
+   "drawn": {
+    "lit pixels": 627.376923076923,
+    "spread of brightness": 0.6021713223737668,
+    "lit, against real": -0.0016891685129196699
+   },
+   "dots": {
+    "lit pixels": 346.82307692307694,
+    "spread of brightness": 0.0,
+    "lit, against real": -0.44811926998543394
+   }
+  },
+  {
+   "dot, in real cells": 8,
+   "pixel, in dots": 2,
+   "real": {
+    "lit pixels": 221.14615384615385,
+    "spread of brightness": 0.6303292291203635
+   },
+   "drawn": {
+    "lit pixels": 242.4,
+    "spread of brightness": 0.6407099310444032,
+    "lit, against real": 0.09610769070228531
+   },
+   "dots": {
+    "lit pixels": 166.33076923076922,
+    "spread of brightness": 0.4057976970324201,
+    "lit, against real": -0.24786949111273437
+   }
+  },
+  {
+   "dot, in real cells": 8,
+   "pixel, in dots": 4,
+   "real": {
+    "lit pixels": 75.42307692307692,
+    "spread of brightness": 0.6369332284450873
+   },
+   "drawn": {
+    "lit pixels": 81.03846153846153,
+    "spread of brightness": 0.6735832622715654,
+    "lit, against real": 0.0744518103008669
+   },
+   "dots": {
+    "lit pixels": 66.92307692307692,
+    "spread of brightness": 0.5159858034628075,
+    "lit, against real": -0.11269760326364098
+   }
+  }
+ ]
+}
