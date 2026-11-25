@@ -1,0 +1,139 @@
+{
+ "roots": 130,
+ "samples": 26,
+ "levels": 3,
+ "zones": [
+  "first two layers of the ring",
+  "middle of the ring",
+  "last two layers of the ring",
+  "strip"
+ ],
+ "rows": [
+  {
+   "level": 1,
+   "stage": 1,
+   "last": true,
+   "first two layers of the ring": [
+    0.987109375,
+    0.018852117463769497
+   ],
+   "middle of the ring": [
+    0.9990256001417308,
+    0.01508510723078362
+   ],
+   "last two layers of the ring": [
+    1.0142553359061195,
+    0.019803614827182393
+   ],
+   "strip": [
+    0.9766708238573839,
+    0.015685406905425074
+   ]
+  },
+  {
+   "level": 2,
+   "stage": 1,
+   "last": false,
+   "first two layers of the ring": [
+    1.0001045478306325,
+    0.01580254775497406
+   ],
+   "middle of the ring": [
+    0.9915795071795781,
+    0.011462699384565735
+   ],
+   "last two layers of the ring": [
+    0.9922825070159027,
+    0.015101917039228651
+   ],
+   "strip": [
+    0.9825818232897878,
+    0.013739663860015138
+   ]
+  },
+  {
+   "level": 2,
+   "stage": 2,
+   "last": true,
+   "first two layers of the ring": [
+    1.041085495410855,
+    0.019937694837918938
+   ],
+   "middle of the ring": [
+    0.9902829250655336,
+    0.013832523457978332
+   ],
+   "last two layers of the ring": [
+    1.002378153056862,
+    0.01734938487502659
+   ],
+   "strip": [
+    0.927704349456318,
+    0.014918696210611595
+   ]
+  },
+  {
+   "level": 3,
+   "stage": 1,
+   "last": false,
+   "first two layers of the ring": [
+    0.9837204685328568,
+    0.015177204776589613
+   ],
+   "middle of the ring": [
+    0.9984188034188034,
+    0.011916147726708728
+   ],
+   "last two layers of the ring": [
+    0.9972401103955841,
+    0.015076737527673321
+   ],
+   "strip": [
+    0.9598195697432339,
+    0.01302454819085513
+   ]
+  },
+  {
+   "level": 3,
+   "stage": 2,
+   "last": false,
+   "first two layers of the ring": [
+    1.0133383366309614,
+    0.01477515624830243
+   ],
+   "middle of the ring": [
+    1.002528833082399,
+    0.012421006541452465
+   ],
+   "last two layers of the ring": [
+    0.994928767481375,
+    0.015490498272167152
+   ],
+   "strip": [
+    0.9434484074003433,
+    0.013819131059316873
+   ]
+  },
+  {
+   "level": 3,
+   "stage": 3,
+   "last": true,
+   "first two layers of the ring": [
+    1.006520848506919,
+    0.014469339784678648
+   ],
+   "middle of the ring": [
+    0.999866428546693,
+    0.012974337979569534
+   ],
+   "last two layers of the ring": [
+    0.9881600170155445,
+    0.01591066657502407
+   ],
+   "strip": [
+    0.9155542963532602,
+    0.014031724957684087
+   ]
+  }
+ ]
+}

@@ -1,0 +1,59 @@
+{
+ "roots": 130,
+ "samples": 26,
+ "pixel": 8,
+ "stages": [
+  {
+   "stages finer than the pixel": 0,
+   "real cells": false,
+   "lit pixels": [
+    182.52307692307693,
+    3.9041774697774225
+   ],
+   "lit, of real": 0.5528682604035603,
+   "spread of brightness": 0.0,
+   "lit here only": 25.176923076923078,
+   "lit in the real only": 172.7923076923077,
+   "correlation with real": null
+  },
+  {
+   "stages finer than the pixel": 1,
+   "real cells": false,
+   "lit pixels": [
+    257.8692307692308,
+    5.601488307013791
+   ],
+   "lit, of real": 0.7810941795983039,
+   "spread of brightness": 0.40987309124398574,
+   "lit here only": 17.023076923076925,
+   "lit in the real only": 89.29230769230769,
+   "correlation with real": 0.3320528774724101
+  },
+  {
+   "stages finer than the pixel": 2,
+   "real cells": false,
+   "lit pixels": [
+    306.83846153846156,
+    6.621109731627568
+   ],
+   "lit, of real": 0.9294235518896502,
+   "spread of brightness": 0.5288552756512823,
+   "lit here only": 10.707692307692307,
+   "lit in the real only": 34.00769230769231,
+   "correlation with real": 0.7707802882335762
+  },
+  {
+   "stages finer than the pixel": 3,
+   "real cells": true,
+   "lit pixels": [
+    330.1384615384615,
+    7.010689120017076
+   ],
+   "lit, of real": 1.0,
+   "spread of brightness": 0.5968669481063726,
+   "lit here only": 0.0,
+   "lit in the real only": 0.0,
+   "correlation with real": 1.0
+  }
+ ]
+}

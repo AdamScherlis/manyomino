@@ -16,9 +16,41 @@ if E:
         t.append(f"| {k} | {g(a_)} | {g(b_)} | {100 * d:+.1f}% | {z:+.1f} |")
     zs = [r[4] for r in E["rows"] if "floating" not in r[0] and r[4] == r[4]]
     t += ["", f"Leaving out the rows for floating pieces (which a real picture cannot have), {sum(1 for z in zs if abs(z) > 2)} of {len(zs)} rows are beyond 2 s.e. and the largest is {max(abs(z) for z in zs):.1f}. "
-          f"Per level: {', '.join(f'{x:.1f}' for x in E['seconds'])} s; cells added to join pieces of the inside that carry one label {', '.join(f'{x:.1f}' for x in E['links'])}; "
-          + (f"crossings at which the ring has no cell (counted at every stage) {', '.join(f'{x:.1f}' for x in E['loose'])}; " if "loose" in E else "") +
+          f"Per level: {', '.join(f'{x:.1f}' for x in E['seconds'])} s; pieces joined again at the start of a stage (all stages of a level together) {', '.join(f'{x:.1f}' for x in E['loose'])}, with {', '.join(f'{x:.1f}' for x in E['links'])} cells; "
+          + (f"of those joins, longer than 8 cells {', '.join(f'{x:.2f}' for x in E['long'])}; " if "long" in E else "") +
           f"parts in the finer world's box {', '.join(f'{x:.2f}' for x in E['fineParts'])}, kept apart in the new world {', '.join(f'{x:.2f}' for x in E['parts'])}."]
+    Rf = load("ref_test.json")
+    if Rf:
+        rr = {r[0]: r for r in Rf["rows"]}; Lr = Rf["levels"]; cell = lambda k: f"{100 * rr[k][3]:+.1f}% ({rr[k][4]:+.1f})" if k in rr else ""
+        zr = [r[4] for r in Rf["rows"] if "floating" not in r[0] and r[4] == r[4]]; fl = rr.get("floating pieces")
+        t += ["", f"The refining alone (`analysis/e2e_test.py` with `N=0 S=0 ball=1024,250000` and the engine built for larger worlds, {Rf['roots']} roots): the real cells out to 1,024 from a root are "
+              f"halved and thinned {Lr + 1} times and the rings refined again, with nothing drawn afresh, so that every world is the real shape at its scale and only the refining is on trial. "
+              "Made against real, in per cent, with the difference in standard errors in brackets.", "",
+              "| ring | " + " | ".join(str(k) for k in range(1, Lr + 1)) + " |", "|---|" + "---:|" * Lr,
+              "| cells in the ring | " + " | ".join(cell(f"L{k} cells") for k in range(1, Lr + 1)) + " |",
+              "| cells in the two rows inside its inner seam | " + " | ".join(cell(f"L{k} seam: cells within {1 if k == 1 else 2} inside") for k in range(1, Lr + 1)) + " |",
+              "| cells in the two rows outside it | " + " | ".join(cell(f"L{k} seam: cells within {1 if k == 1 else 2} outside") for k in range(1, Lr + 1)) + " |",
+              "| joins across it | " + " | ".join(cell(f"L{k} seam: joins across") for k in range(1, Lr + 1)) + " |", "",
+              f"(One row either side at the first seam.) {sum(1 for z in zr if abs(z) > 2)} of the {len(zr)} rows of the full list are beyond 2 s.e., the largest {max(abs(z) for z in zr):.1f}"
+              + (f"; floating pieces a picture {fl[2]:.3f}" if fl else "") + ". The version before this one, on 104 roots: joins across the five seams -2.5, +2.2, +9.3, -8.8 and -18.7%, "
+              "the two rows outside the fifth seam 18.5% short and the fifth ring 5.5% over."]
+    St = load("stage_test.json")
+    if St:
+        Z = St["zones"]
+        t += ["", f"Stage by stage (`analysis/stage_test.py`, {St['roots']} roots, again with nothing drawn afresh): cells in the picture of a level at the end of each stage, divided by the true cells at that "
+              "resolution, in zones named by layers of the level's own world. The strip is the two layers beyond the ring that are refined with it and not kept; it is thin at its far side, "
+              "which is the edge of what is refined.", "",
+              "| level | stage | " + " | ".join(Z) + " |", "|---:|---:|" + "---:|" * len(Z)]
+        for r in St["rows"]: t.append(f"| {r['level']} | {r['stage']}{' (last)' if r['last'] else ''} | " + " | ".join(f"{r[k][0]:.3f} ± {r[k][1]:.3f}" for k in Z) + " |")
+    Ms = load("mass_test.json")
+    if Ms:
+        t += ["", f"Far out (`analysis/mass_test.py`, {Ms['roots']} roots): real shapes counted in pixels {Ms['pixel']} cells wide, out to 128 cells from a root, and the same shapes halved and thinned "
+              "until a cell is a pixel, half a pixel or a quarter of one, counted in the same pixels. Brightness is a pixel's count over the mean count of lit pixels.", "",
+              "| cells to a pixel side | lit pixels | of the real number | spread of brightness (s.d. / mean) | brightness against real, pixels lit in both (r) | lit here only | lit in the real only |", "|---|---:|---:|---:|---:|---:|---:|"]
+        for r in Ms["stages"]:
+            k = r["stages finer than the pixel"]
+            t.append(f"| {2 ** k}{' (real cells)' if r['real cells'] else ''} | {r['lit pixels'][0]:.0f} ± {r['lit pixels'][1]:.0f} | {100 * r['lit, of real']:.0f}% | {r['spread of brightness']:.2f} | "
+                     + ("" if r["real cells"] or r["correlation with real"] is None or r["correlation with real"] != r["correlation with real"] else f"{r['correlation with real']:.2f}") + f" | {r['lit here only']:.0f} | {r['lit in the real only']:.0f} |")
     Wt = load("world_test.json")
     if Wt:
         L = Wt["layers"]; h = Wt["held to"]; bd = Wt["bands"]; f = lambda v: f"{v[0]:.1f} ± {v[1]:.1f}"; lo = 5

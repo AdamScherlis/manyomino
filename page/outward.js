@@ -10,7 +10,9 @@
 //      are not taken for joined: the sampler has to join them outside, as the finer world did.
 // A world's cells are big on the screen, so its ring (from the box out to twice the box) is refined
 // J times (a cell becomes four, then the local walk), each time with the finer level's picture held
-// fixed inside the box and joined to it.
+// fixed inside the box, and together with a strip of the same world beyond the ring, so that the
+// ring's outer rows are never refined against an edge.  The strip is not kept, but its first rows
+// are what the next level's ring starts from beside this picture, at every stage.
 // Level 0 is real cells; no picture is ever refined below real cells (there a cell just becomes
 // four).  Coordinates put the root at the origin; r is max(|x|, |y|) with -1 folded onto 0, so
 // r < R is the square of side 2R about the root.
@@ -20,11 +22,13 @@
 // RULE  3: that walk adds cells only on or next to the halved shape   COVER 1: and leaves none of its sites bare
 // W     weight of a cell in that walk, times 1/lambda             PARTS 5: parts of the finer world are kept apart in the box (0: not)
 // TINY  a part of this many cells or fewer is merged with what it touches
+// HOLD  layers outside the box that the sampler holds as well
 // T     sweeps of the walk at each stage of a picture; T1 at the first stage, halving from there down to T; TL at the last stage
-// COLLAR  depth of the strip inside the seam that the walk may rework (less at the first stages: see outCollar)
-// NEAR  a join this short is made wherever ring and inside have come apart; REACH the longest join, made only if needed
-// CARRY 1: a strand grown in over the seam stays with the ring if it is all that joins two things
-const OUT = { B: 8, N: 16000, S: 100, TC: 16, RULE: 3, COVER: 1, W: 0.72, HOLD: 2, TINY: 3, T: 16, T1: 32, TL: 64, WR: 1.015, COLLAR: 12, DEEP: 3 };
+// WR    weight of a cell in the walk at a stage before the last, times 1/lambda; WL at the last stage
+// COLLAR  depth of the strip inside the seam that the walk may rework at the last stage (see outCollar)
+// MARGIN  layers of the world beyond twice the box that are refined along with the ring
+// BAND  rows outside the seam that are taken, at each stage, from the finer level's strip
+const OUT = { B: 8, N: 16000, S: 100, TC: 16, RULE: 3, COVER: 1, W: 0.72, HOLD: 2, TINY: 3, T: 16, T1: 32, TL: 64, WR: 0.985, WL: 0.9985, COLLAR: 12, MARGIN: 2, BAND: 2 };
 // the depth, in cells of stage j, of the strip inside the seam that the walk may rework: COLLAR, but never more than a quarter of the way in
 const outCollar = (P, j) => Math.min(P.COLLAR, (P.B << j) >> 2);
 const outRad = (x, y) => { const a = x < 0 ? -x - 1 : x, b = y < 0 ? -y - 1 : y; return a > b ? a : b; };
@@ -32,7 +36,7 @@ const outRad = (x, y) => { const a = x < 0 ? -x - 1 : x, b = y < 0 ? -y - 1 : y;
 // E: the engine's exports (after E.init); o: { J, seed, and any of OUT's fields }
 function Outgoer(E, o) {
   const P = Object.assign({}, OUT, o), B = P.B, J = P.J, G = 4 * B << J;
-  let world = null, prev = null, crossAt = null, level = 0;      // crossAt[j]: where the picture leaves its outer edge at stage j
+  let world = null, prev = null, prevLab = null, prevBand = null, crossAt = null, level = 0;      // crossAt[j]: where the picture leaves its outer edge at stage j
   E.seed(P.seed >>> 0, 0x5eed);
   const put = (at, x, y) => { new Int32Array(E.memory.buffer, E.xs() + 4 * at, x.length).set(x); new Int32Array(E.memory.buffer, E.ys() + 4 * at, y.length).set(y); };
   const get = (from, to) => ({ x: new Int32Array(E.memory.buffer, E.xs() + 4 * from, to - from).slice(), y: new Int32Array(E.memory.buffer, E.ys() + 4 * from, to - from).slice() });
@@ -47,6 +51,8 @@ function Outgoer(E, o) {
     world = { x: Int32Array.from(cells.x), y: Int32Array.from(cells.y), lab: null }; level = 0;
     prev = [keep(world, r => r < 2 * B)]; for (let j = 1; j <= J; j++) prev.push(twice(prev[j - 1]));
     crossAt = [crossings(world)];
+    prevLab = [pieces(prev[0], 2 * B, null).id]; prevBand = [keep(world, r => r >= 2 * B && r < 2 * B + P.BAND)];
+    for (let j = 1; j <= J; j++) { prevLab.push(Int32Array.from({ length: 4 * prevLab[j - 1].length }, (_, i) => prevLab[j - 1][i >> 2])); prevBand.push(keep(twice(prevBand[j - 1]), r => r < (2 * B << j) + P.BAND)); }
     return picture(prev[J]);
   }
   // Where the world crosses the edge of its picture (r = 2B): the cell just inside, and the way out to the cell just outside.
@@ -129,115 +135,113 @@ function Outgoer(E, o) {
     for (let s = 0; s < P.S; s++) { E.run(E.count()); yield; }
     world = get(0, E.count()); world.lab = new Int32Array(E.memory.buffer, E.partlabels(), world.x.length).slice(); E.parts(0); level++; info.msWorld = Date.now() - t0;
     info.parts = new Set(world.lab.filter(v => v)).size;
-    // The picture.  Stage 0 is the world's own cells out to twice the box; each stage after is twice as fine.
-    // The ring (box to twice the box) is refined as a closed region: nothing beyond it counts, and where a strand
-    // leaves it one cell on the outer edge stays put (an anchor).  Inside it is the finer level's picture, held
-    // fixed except for a collar a few cells deep just inside the seam, which the walk may rework along with the ring.
-    const st = [keep(world, r => r < 2 * B)], cross = [crossings(world)];
-    let ring = keep(world, r => r >= B && r < 2 * B), anchors = cross[0], baseLab = pinLab;
-    info.links = 0; info.loose = 0;
+    // The picture.  Stage 0 is the world's own cells; each stage after is twice as fine.  The ring (box to twice
+    // the box) is refined together with a strip of the same world beyond it (MARGIN layers), so that its outer rows
+    // have their own neighbours beside them at every stage.  Only what lies inside twice the box is kept.  Inside
+    // the ring is the finer level's picture, held; and the ring's first rows (BAND of them) are, at each stage, the
+    // very cells that picture had beside it there: the first rows of the finer level's strip at that stage.
+    const M0 = P.MARGIN, BAND = P.BAND, st = [], stLab = [], band = [], cross = [crossings(world)];
+    const withLab = (c, lab, f) => { const n = c.x.length, x = [], y = [], l = []; for (let i = 0; i < n; i++) if (f(outRad(c.x[i], c.y[i]))) { x.push(c.x[i]); y.push(c.y[i]); l.push(lab ? lab[i] : 0); } return { x: Int32Array.from(x), y: Int32Array.from(y), lab: Int32Array.from(l) }; };
+    { const k0 = withLab(world, world.lab, r => r < 2 * B); st.push({ x: k0.x, y: k0.y }); stLab.push(pieces(k0, 2 * B, k0.lab).id); band.push(keep(world, r => r >= 2 * B && r < 2 * B + BAND)); }
+    let ring = keep(world, r => r >= B && r < 2 * B + M0);
+    // where the world leaves the strip, one cell on its outer edge stays put at every stage (an anchor), so that a
+    // strand which is joined to the rest only beyond the strip cannot draw back out of it and be left on its own
+    let anchors = []; { const e = 2 * B + M0, w0 = withLab(world, world.lab, r => r < e), pw = pieces(w0, e, w0.lab), all = new Set(); for (let i = 0; i < world.x.length; i++) all.add(key(world.x[i], world.y[i]));
+      for (let i = 0; i < w0.x.length; i++) { const x = w0.x[i], y = w0.y[i]; if (outRad(x, y) === e - 1) for (const [dx, dy] of NB) if (outRad(x + dx, y + dy) === e && all.has(key(x + dx, y + dy))) anchors.push(x, y, dx, dy, pw.id[i]); } }
+    info.links = 0; info.loose = 0; info.dropped = 0; info.unjoined = 0; info.long = 0; info.taken = 0;
     for (let j = 1; j <= J; j++) {
-      const b = B << j, fine = prev[j - 1], C = outCollar(P, j), last = j === Math.min(level, J);
-      if (j > level) { st.push(twice(st[j - 1])); continue; }      // finer than real cells: a cell just becomes four
-      // Every cell of the inside carries the label of its piece: at the first stage of its part of the world's box;
-      // after that the finer picture's pieces take the labels of the pieces they refine (found by looking each cell
-      // up in the picture it came from).
-      let fineLab = baseLab;
-      if (j > 1) {
-        const pc = pieces(prev[j - 2], b >> 1), pf = pieces(fine, b), vote = new Map(), best = new Int32Array(pf.np + 1), score = new Int32Array(pf.np + 1);
-        for (let i = 0; i < fine.x.length; i++) { const k = pc.at(fine.x[i] >> 1, fine.y[i] >> 1); if (k < 0 || !baseLab[k]) continue; const v = pf.id[i] * 1048576 + baseLab[k], c = (vote.get(v) || 0) + 1; vote.set(v, c); if (c > score[pf.id[i]]) { score[pf.id[i]] = c; best[pf.id[i]] = baseLab[k]; } }
-        for (let i = 0; i < fine.x.length; i++) {                 // a small piece may have no cell over where it came from: look next door
-          if (best[pf.id[i]]) continue;
-          for (let d = 0; d < 9 && !best[pf.id[i]]; d++) { const k = pc.at((fine.x[i] >> 1) + d % 3 - 1, (fine.y[i] >> 1) + (d / 3 | 0) - 1); if (k >= 0 && baseLab[k]) best[pf.id[i]] = baseLab[k]; }
-        }
-        let fresh = 0; for (let k = 0; k < baseLab.length; k++) if (baseLab[k] > fresh) fresh = baseLab[k];
-        for (let q = 1; q <= pf.np; q++) if (!best[q]) best[q] = ++fresh;
-        fineLab = Int32Array.from(pf.id, q => best[q]);
-      }
-      // on the outer edge, one of the two cells facing out of each cell that led out stays where it is
-      const held = new Set(), next = [];
-      for (let k = 0; k < anchors.length; k += 4) {
-        const dx = anchors[k + 2], dy = anchors[k + 3], t = rnd() < 0.5 ? 0 : 1, x = dx ? 2 * anchors[k] + (dx > 0 ? 1 : 0) : 2 * anchors[k] + t, y = dy ? 2 * anchors[k + 1] + (dy > 0 ? 1 : 0) : 2 * anchors[k + 1] + t;
-        next.push(x, y, dx, dy); held.add(key(x, y));
-      }
-      // The ring's cells at this stage: the last stage's, each become four (a strand of the ring that has grown in
-      // over the seam is still the ring's; where its cells would land on the finer picture they are dropped).
-      const taken = new Uint8Array(4 * b * b); for (let i = 0; i < fine.x.length; i++) taken[(fine.y[i] + b) * 2 * b + fine.x[i] + b] = 1;
-      const r2 = keep2(twice(ring), (x, y) => outRad(x, y) >= b || !taken[(y + b) * 2 * b + x + b]), X_ = [], Y_ = [], L_ = []; let nfix = 0, maxLab = 0;
-      // Where the ring and the finer picture are joined.  The finer picture left its own outer edge at its anchors
-      // (at the first stage: wherever the finer world crosses the edge of the box).  The cell of the ring facing an
-      // anchor is the same cell seen from the other side, since the anchor of one stage lies in the four cells of
-      // the anchor before it and the ring's cell likewise.  Until the last stage the two are joined there and
-      // nowhere else, and neither cell is taken away; whatever else touches across the seam only touches.  Where
-      // the halved world kept no cell at a crossing the ring has none facing the anchor, and the strand ends there.
-      const facing = new Set(), anchored = new Set(), fa = crossAt[j - 1], fx_ = [], fy_ = [], have = new Set();
-      for (let i = 0; i < r2.x.length; i++) have.add(key(r2.x[i], r2.y[i]));
-      for (let k = 0; k < fa.length; k += 4) { const u = fa[k] + fa[k + 2], v = fa[k + 1] + fa[k + 3], kk = key(u, v); anchored.add(key(fa[k], fa[k + 1])); if (facing.has(kk) || held.has(kk)) continue;
-        if (!have.has(kk)) { info.loose++; continue; } facing.add(kk); fx_.push(u); fy_.push(v); }
-      const pinned = c => !last && anchored.has(c);
-      // the cells in order: the finer picture short of the collar; the cells that stay (the ring's anchors and, before
-      // the last stage, the cells facing the finer picture's anchors and those anchors); the collar; the rest of the ring
+      const b = B << j, R = 2 * b + (M0 << j), fine = prev[j - 1], fineLab = prevLab[j - 1], last = j === Math.min(level, J), C = last ? outCollar(P, j) : 0;
+      if (j > level) { st.push(twice(st[j - 1])); stLab.push(Int32Array.from({ length: 4 * stLab[j - 1].length }, (_, i) => stLab[j - 1][i >> 2])); band.push(keep(twice(band[j - 1]), r => r < 2 * b + BAND)); continue; }      // finer than real cells: a cell just becomes four
+      const own = keep(twice(ring), r => r >= b + BAND), bandIn = prevBand[j - 1], held = new Map(), nextA = [];
+      for (let k = 0; k < anchors.length; k += 5) { const dx = anchors[k + 2], dy = anchors[k + 3], t = rnd() < 0.5 ? 0 : 1, x = dx ? 2 * anchors[k] + (dx > 0 ? 1 : 0) : 2 * anchors[k] + t, y = dy ? 2 * anchors[k + 1] + (dy > 0 ? 1 : 0) : 2 * anchors[k + 1] + t;
+        if (!held.has(key(x, y))) { nextA.push(x, y, dx, dy, anchors[k + 4]); held.set(key(x, y), anchors[k + 4]); } }
+      anchors = nextA;
+      // the cells in order: the finer picture short of the collar, and the anchors (fixed); the collar (the last stage only); the band; the rest
+      const X_ = [], Y_ = [], L_ = [];
       for (let i = 0; i < fine.x.length; i++) if (outRad(fine.x[i], fine.y[i]) < b - C - 1) { X_.push(fine.x[i]); Y_.push(fine.y[i]); L_.push(fineLab[i]); }
       const ndeep = X_.length;                                   // these have nothing beside them that the walk could change
       for (let i = 0; i < fine.x.length; i++) if (outRad(fine.x[i], fine.y[i]) === b - C - 1) { X_.push(fine.x[i]); Y_.push(fine.y[i]); L_.push(fineLab[i]); }
-      for (let i = 0; i < r2.x.length; i++) if (held.has(key(r2.x[i], r2.y[i]))) { X_.push(r2.x[i]); Y_.push(r2.y[i]); L_.push(0); }
-      if (!last) { for (let i = 0; i < fx_.length; i++) { X_.push(fx_[i]); Y_.push(fy_[i]); L_.push(0); }
-        for (let i = 0; i < fine.x.length; i++) if (outRad(fine.x[i], fine.y[i]) >= b - C && pinned(key(fine.x[i], fine.y[i]))) { X_.push(fine.x[i]); Y_.push(fine.y[i]); L_.push(fineLab[i]); } }
-      nfix = X_.length;
-      for (let i = 0; i < fine.x.length; i++) if (outRad(fine.x[i], fine.y[i]) >= b - C && !pinned(key(fine.x[i], fine.y[i]))) { X_.push(fine.x[i]); Y_.push(fine.y[i]); L_.push(fineLab[i]); }
-      if (last) for (let i = 0; i < fx_.length; i++) { X_.push(fx_[i]); Y_.push(fy_[i]); L_.push(0); }
-      for (let i = 0; i < r2.x.length; i++) if (!held.has(key(r2.x[i], r2.y[i])) && !facing.has(key(r2.x[i], r2.y[i]))) { X_.push(r2.x[i]); Y_.push(r2.y[i]); L_.push(0); }
+      const nK = X_.length; for (let i = 0; i < own.x.length; i++) if (held.has(key(own.x[i], own.y[i]))) { X_.push(own.x[i]); Y_.push(own.y[i]); L_.push(0); }
+      const nfix = X_.length;
+      for (let i = 0; i < fine.x.length; i++) if (outRad(fine.x[i], fine.y[i]) >= b - C) { X_.push(fine.x[i]); Y_.push(fine.y[i]); L_.push(fineLab[i]); }
+      const nIn = X_.length;
+      for (let i = 0; i < bandIn.x.length; i++) { X_.push(bandIn.x[i]); Y_.push(bandIn.y[i]); L_.push(0); }
+      for (let i = 0; i < own.x.length; i++) if (!held.has(key(own.x[i], own.y[i]))) { X_.push(own.x[i]); Y_.push(own.y[i]); L_.push(0); }
+      // Behind the band the ring's own cells (the last stage's, each become four) may have lost what joined them to
+      // it.  What is joined to what is put back as it was in the world: all pieces that hold anchors of one piece of
+      // the world (within the strip) are joined to each other, after every piece that holds no anchor has been
+      // joined to whatever is nearest.  A join is the shortest way through empty sites outside the seam; smallest pieces first.
+      { const n0 = X_.length, pa = pieces({ x: X_, y: Y_ }, R, last ? null : L_), up = Array.from({ length: pa.np + 1 }, (_, a) => a), find = a => { while (up[a] !== a) a = up[a] = up[up[a]]; return a; };
+        const size = new Int32Array(pa.np + 1), inner = new Uint8Array(pa.np + 1), mem = Array.from({ length: pa.np + 1 }, () => []), cls = new Int32Array(pa.np + 1);   // cls: the piece of the world a group belongs to (0: not known)
+        const cu = new Map(), cfind = a => { let r = a; while (cu.has(r) && cu.get(r) !== r) r = cu.get(r); return r; };      // two pieces of the world that have come to touch count as one
+        for (let i = 0; i < n0; i++) { const q = pa.id[i]; size[q]++; mem[q].push(i); if (i < nK || (i >= nfix && i < nIn)) inner[q] = 1;
+          if (i >= nK && i < nfix) { const c = cfind(held.get(key(X_[i], Y_[i]))); if (!cls[q]) cls[q] = c; else if (cfind(cls[q]) !== c) cu.set(c, cfind(cls[q])); } }
+        const classOf = g => cls[g] ? cfind(cls[g]) : 0;
+        const added = new Map(), dead = new Uint8Array(n0);
+        const compAt = (u, v) => { const c = pa.at(u, v); if (c >= 0 && !dead[c]) return pa.id[c]; const a = added.get(key(u, v)); return a === undefined ? 0 : a; };   // (a join may pass over a site whose cell was taken)
+        const merge = (a, b_) => { a = find(a); b_ = find(b_); if (a === b_) return; const ca = classOf(a), cb = classOf(b_); up[a] = b_; if (!cb) cls[b_] = ca; else if (ca && ca !== cb) cu.set(ca, cb); };
+        // join group q to the nearest cell of another group for which ok(group) holds
+        const join = (q, ok, most) => {
+          const seen = new Map(), qx = [], qy = []; let h = 0, hit = -1, other = 0; const root = find(q);
+          for (let g = 1; g <= pa.np; g++) if (find(g) === root) for (const i of mem[g]) if (!dead[i] && outRad(X_[i], Y_[i]) >= b - 1) { qx.push(X_[i]); qy.push(Y_[i]); seen.set(key(X_[i], Y_[i]), -1); }
+          const nsrc = qx.length;
+          while (h < qx.length && hit < 0 && qx.length < nsrc + 2000000) { const x = qx[h], y = qy[h];
+            for (const [dx, dy] of NB) { const u = x + dx, v = y + dy, kk = key(u, v), c = compAt(u, v);
+              if (c) { if (h >= nsrc && find(c) !== root && ok(find(c))) { hit = h; other = c; break; } continue; }
+              const r = outRad(u, v); if (seen.has(kk) || r < b || r >= R) continue;
+              seen.set(kk, h); qx.push(u); qy.push(v); }
+            h++; }
+          if (hit < 0) return 0;
+          { let len = 0; for (let w = hit; w >= nsrc; w = seen.get(key(qx[w], qy[w]))) len++; if (len > most) return -1; info.loose++; if (len >= 9) info.long++; }
+          for (let w = hit; w >= nsrc; w = seen.get(key(qx[w], qy[w]))) { added.set(key(qx[w], qy[w]), q); X_.push(qx[w]); Y_.push(qy[w]); L_.push(0); info.links++;
+            for (const [dx, dy] of NB) { const c = compAt(qx[w] + dx, qy[w] + dy); if (c) merge(c, q); } }
+          merge(other, q);
+          // The join has added cells; as many are taken from loose ends close by, so that joins leave the number of cells
+          // as it was (the walk thins what it is given by a factor, to no target, so cells added here would stay).
+          // (for each cell of the join, a cell at the same distance from the root, give or take a row, so that the count
+          // in each row stays what it was; the nearest such cell)
+          for (let w = hit; w >= nsrc; w = seen.get(key(qx[w], qy[w]))) { const px = qx[w], py = qy[w], pr = outRad(px, py); let got = false;
+            for (let slack = 1; slack <= 4 && !got; slack *= 2) for (let D = 2; D <= 64 && !got; D *= 2)
+              for (let v = py - D; v <= py + D && !got; v++) for (let u = px - D; u <= px + D && !got; u++) { const c = pa.at(u, v); if (c < nIn || dead[c] || Math.abs(outRad(u, v) - pr) > slack) continue;
+                // a cell with one neighbour, or the corner of a full block of four with nothing else beside it, can go (not one that a join ends at)
+                let deg = 0, sib = 0; for (const [dx, dy] of NB) if (compAt(u + dx, v + dy)) { if (added.has(key(u + dx, v + dy))) deg = 9; deg++; if (((u + dx) >> 1) === (u >> 1) && ((v + dy) >> 1) === (v >> 1)) sib++; }
+                if (deg === 1 || (deg === 2 && sib === 2 && compAt(u ^ 1, v ^ 1))) { dead[c] = 1; info.taken++; got = true; } } }
+          return 1; };
+        const bySize = []; for (let q = 1; q <= pa.np; q++) bySize.push(q); bySize.sort((u, v) => size[u] - size[v]);
+        // 1: the pieces with no anchor, to whatever is nearest.  (A small piece of the ring's own cells that would
+        // need a long join, and that nothing has been joined to, is dropped instead.)
+        const alone = q => { const r = find(q); for (let g = 1; g <= pa.np; g++) if (g !== q && find(g) === r) return false; return !added.size || ![...added.values()].some(a => find(a) === r); };
+        for (const q of bySize) { if (classOf(find(q))) continue;
+          let live = 0, all = 0; { const r = find(q); for (let g = 1; g <= pa.np; g++) if (find(g) === r) for (const i of mem[g]) if (!dead[i]) { all++; if (g === q) live++; } } if (!all) continue;
+          const small = !inner[q] && alone(q), r = join(q, () => true, small ? Math.max(8, size[q] >> 1) : 1e9);
+          if (r > 0) continue;
+          if (small) { for (const i of mem[q]) dead[i] = 1; info.dropped += live; } else info.unjoined++; }
+        // 2: then the pieces of one piece of the world, to each other: all but the largest, smallest first
+        for (const tried = new Set(); ;) { const sz = new Map(), byClass = new Map(); let did = false;
+          for (let g = 1; g <= pa.np; g++) { const r = find(g); sz.set(r, (sz.get(r) || 0) + size[g]); }
+          for (const [r, n] of sz) { const c = classOf(r); if (!c) continue; if (!byClass.has(c)) byClass.set(c, []); byClass.get(c).push([n, r]); }
+          for (const [, list] of byClass) { if (list.length < 2) continue; list.sort((u, v) => u[0] - v[0]);
+            for (let k = 0; k < list.length - 1; k++) { const r = list[k][1]; if (find(r) !== r || tried.has(r)) continue; tried.add(r); const c = classOf(r);
+              if (join(r, g => classOf(g) === c, 1e9) > 0) did = true; else info.unjoined++; } }
+          if (!did) break; }
+        if (info.dropped || info.taken) { let m = 0; for (let i = 0; i < X_.length; i++) if (i >= n0 || !dead[i]) { X_[m] = X_[i]; Y_[m] = Y_[i]; L_[m++] = L_[i]; } X_.length = Y_.length = L_.length = m; } }
+      if (P.onStage) P.onStage(level, j, 'start', { x: X_, y: Y_ }, { x: own.x, y: own.y }, bandIn);
       E.clear(); put(0, X_, Y_); E.place(X_.length);
-      for (let i = 0; i < L_.length; i++) if (L_[i] > maxLab) maxLab = L_[i];
-      new Int32Array(E.memory.buffer, E.partlabels(), L_.length).set(L_); E.hold(-b, -b, b, b, 1); E.parts(4);
-      E.unmark(); if (!last) for (let i = 0; i < fx_.length; i++) E.flag(fx_[i], fy_[i]);
-      // Pieces of the finer picture that carry one label (they refine one piece) are joined to each other by the
-      // shortest way through empty sites inside.
-      { const pa = pieces({ x: X_, y: Y_ }, 2 * b, L_), up = Array.from({ length: pa.np + 1 }, (_, a) => a), find = a => { while (up[a] !== a) a = up[a] = up[up[a]]; return a; };
-        const size = new Int32Array(pa.np + 1), lists = new Map();
-        for (let i = 0; i < L_.length; i++) { if (!L_[i]) continue; const q = pa.id[i]; size[q]++; let l = lists.get(L_[i]); if (!l) lists.set(L_[i], l = []); if (!l.includes(q)) l.push(q); }
-        for (const [lab, l] of lists) {
-          l.sort((u, v) => size[v] - size[u]);
-          for (let t = 1; t < l.length; t++) {
-            // breadth first from the smaller piece through empty sites inside, to a cell of the same label (or of the ring) that is joined to the largest
-            const q = l[t], seen = new Map(), qx = [], qy = []; let h = 0, hit = -1;
-            if (find(q) === find(l[0])) continue;
-            for (let k = 0; k < L_.length; k++) if (pa.id[k] === q) { qx.push(X_[k]); qy.push(Y_[k]); seen.set(key(X_[k], Y_[k]), -1); }
-            while (h < qx.length && hit < 0 && qx.length < 60000) { const x = qx[h], y = qy[h];
-              for (const [dx, dy] of NB) { const u = x + dx, v = y + dy, kk = key(u, v); if (seen.has(kk) || outRad(u, v) >= b) continue; const c = pa.at(u, v);
-                if (c >= 0) { if (find(pa.id[c]) === find(l[0]) && (!L_[c] || L_[c] === lab)) { hit = h; break; } continue; }
-                seen.set(kk, h); qx.push(u); qy.push(v); }
-              h++; }
-            if (hit >= 0) { for (let w = hit; w >= 0 && seen.get(key(qx[w], qy[w])) !== -1; w = seen.get(key(qx[w], qy[w]))) info.links += E.add(qx[w], qy[w], lab); up[find(q)] = find(l[0]); }
-          }
-        } }
-      // The walk.  Before the last stage it heeds the labels: two pieces of the inside that only touch are not joined,
-      // and the ring is joined to the inside only at the marked cells, so that it cannot come to rely on a touch that
-      // the next stage, which puts the inside in afresh, would undo.  The ring may grow in over the seam only DEEP
-      // cells.  The last stage that is not finer than real cells sets the fine texture and gets more sweeps; its
-      // picture is the one that stays, so there the walk needs no labels: whatever touches at the end is joined,
-      // and the walk by itself never parts what is joined.  (With labels a real ring beside a real inside does
-      // not keep its counts: the collar ends 2% short and the two rows outside the seam 3% over.  Without, it
-      // keeps them to half a percent.)
-      E.parts(last ? 0 : 4); if (!last) { E.strict(1); E.deep(P.DEEP); }
-      E.shadow(0, last ? 1 : P.WR);                             // (the weight of a cell, in units of 1/lambda)
-      E.pin(nfix, b - C, 2 * b); E.idle(ndeep);
+      // The walk.  Before the last stage the inside is fixed and keeps the labels of its pieces: two of them that
+      // only touch are not joined, so the ring cannot come to rely on that touch; the ring is joined to whatever it
+      // touches.  The last stage that is not finer than real cells sets the fine texture and gets more sweeps; there
+      // a collar of the inside is free as well and nothing has a label: whatever touches at the end is joined.
+      if (!last) { new Int32Array(E.memory.buffer, E.partlabels(), L_.length).set(L_); E.hold(-b, -b, b, b, 1); E.parts(4); }
+      E.shadow(0, last ? P.WL : P.WR);                             // (the weight of a cell, in units of 1/lambda)
+      E.pin(nfix, b - C, R); E.idle(ndeep);
       for (let q = 4 * (last ? Math.max(P.TL, P.T1 >> (j - 1)) : Math.max(P.T, P.T1 >> (j - 1))); q > 0; q--) { E.relax(1); yield; }
-      const got = get(0, E.count()), gl = new Int32Array(E.memory.buffer, E.partlabels(), E.count()).slice(); E.parts(0);
-      // The ring from here on: what lies outside the seam, and the strands of it that have grown in over the seam
-      // (cells inside with none of the inside's labels, joined to the ring through such cells).
-      if (!last) { const n = got.x.length, kind = new Uint8Array(n), ga = pieces(got, 2 * b);        // 1 ring, 2 inside, 3 a strand grown in
-        for (let i = 0; i < n; i++) kind[i] = outRad(got.x[i], got.y[i]) >= b ? 1 : gl[i] > 0 && gl[i] <= maxLab ? 2 : 3;
-        const stays = new Uint8Array(n), stack = new Int32Array(n); let top = 0;
-        for (let i = 0; i < n; i++) if (kind[i] === 1) stack[top++] = i;
-        while (top) { const a = stack[--top]; for (const [dx, dy] of NB) { const k = ga.at(got.x[a] + dx, got.y[a] + dy); if (k >= 0 && kind[k] === 3 && !stays[k]) { stays[k] = 1; stack[top++] = k; } } }
-        const rx = [], ry = [];
-        for (let i = 0; i < n; i++) if (kind[i] === 1 || stays[i]) { rx.push(got.x[i]); ry.push(got.y[i]); }
-        ring = { x: Int32Array.from(rx), y: Int32Array.from(ry) }; }
-      st.push(got);
-      anchors = next; cross[j] = next; baseLab = fineLab;
+      const got = get(0, E.count()), gl = last ? null : new Int32Array(E.memory.buffer, E.partlabels(), E.count()).slice(); E.parts(0);
+      if (P.onStage) P.onStage(level, j, 'end', got);
+      const k1 = withLab(got, gl, r => r < 2 * b);
+      st.push({ x: k1.x, y: k1.y }); stLab.push(pieces(k1, 2 * b, last ? null : k1.lab).id); band.push(keep(got, r => r >= 2 * b && r < 2 * b + BAND));
+      ring = keep(got, r => r >= b);
     }
-    prev = st; crossAt = cross; info.ms = Date.now() - t0;
+    prev = st; prevLab = stLab; prevBand = band; crossAt = cross; info.ms = Date.now() - t0;
     const pic = picture(st[J]); pic.info = info; return pic;
   }
   function next() { const g = work(); for (;;) { const r = g.next(); if (r.done) return r.value; } }

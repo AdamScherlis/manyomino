@@ -120,14 +120,16 @@ def main():
     json.dump({"roots": n, "levels": levels, "extra": extra, "rows": rows, "info": info}, open(os.path.join(ROOT, "zoomtest", "e2e", tag + ".json"), "w"))
     if tag == "final":                                                               # the run the page and the README quote
         mean = lambda k: [float(np.mean([i[L][k] for i in info])) for L in range(levels)]
-        json.dump({"roots": n, "samples": len(snaps), "levels": levels, "seed": seed, "rows": rows, "seconds": [m / 1000 for m in mean("ms")], "links": mean("links"), "loose": mean("loose"),
+        json.dump({"roots": n, "samples": len(snaps), "levels": levels, "seed": seed, "rows": rows, "seconds": [m / 1000 for m in mean("ms")], "links": mean("links"), "loose": mean("loose"), "long": mean("long"), "dropped": mean("dropped"), "unjoined": mean("unjoined"),
                    "fineParts": mean("fineParts"), "parts": mean("parts")}, open(os.path.join(ROOT, "analysis", "e2e_test.json"), "w"), indent=1)
         np.savez_compressed(os.path.join(ROOT, "analysis", "e2e_pics.npz"), real=np.array([pics[i] for i in keep[:12]]), made=np.array([res[i][2] for i in keep[:12]]))
+    if tag == "ref":                                                                 # the run that only halves a large real shape and refines it again
+        json.dump({"roots": n, "samples": len(snaps), "levels": levels, "seed": seed, "extra": extra, "rows": rows}, open(os.path.join(ROOT, "analysis", "ref_test.json"), "w"), indent=1)
     print(f"{tag}: {n} roots, {levels} levels, {' '.join(extra)}")
     print(f"  {'':46s} {'real':>10s} {'made':>10s} {'diff':>8s} {'s.e.':>6s}")
     for k, r_, g, d, z in rows: print(f"  {k:46s} {r_:10.4g} {g:10.4g} {100 * d:+7.1f}% {z:+6.1f}")
     z = np.array([r[4] for r in rows]); print(f"  beyond 2 s.e.: {int((np.abs(z) > 2).sum())} of {len(z)}; largest {np.abs(z).max():.1f}")
-    for L in range(levels): print(f"  level {L + 1}: {np.mean([i[L]['ms'] for i in info]):.0f} ms, cells added as joins {np.mean([i[L]['links'] for i in info]):.1f}, crossings left with no cell of the ring {np.mean([i[L]['loose'] for i in info]):.2f}, parts in the finer box {np.mean([i[L]['fineParts'] for i in info]):.2f}, after halving {np.mean([i[L]['partsHalved'] for i in info]):.2f}, in the new world {np.mean([i[L]['parts'] for i in info]):.2f}")
+    for L in range(levels): print(f"  level {L + 1}: {np.mean([i[L]['ms'] for i in info]):.0f} ms, pieces joined again at the start of a stage {np.mean([i[L]['loose'] for i in info]):.1f} with {np.mean([i[L]['links'] for i in info]):.1f} cells (as many taken from loose ends), of them longer than 8 cells {np.mean([i[L]['long'] for i in info]):.2f}, small pieces dropped {np.mean([i[L]['dropped'] for i in info]):.1f} cells, parts in the finer box {np.mean([i[L]['fineParts'] for i in info]):.2f}, after halving {np.mean([i[L]['partsHalved'] for i in info]):.2f}, in the new world {np.mean([i[L]['parts'] for i in info]):.2f}")
 
 
 if __name__ == "__main__":

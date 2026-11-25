@@ -80,11 +80,11 @@ def out_report(assets=None):
     out.append(
         f"<p>The picture takes from each world only a ring, from its box out to a box twice as wide. Inside the ring is the finer world&rsquo;s picture; outside it, the next "
         f"world&rsquo;s. A world&rsquo;s squares are large on the screen, so its ring is drawn finer by the doubling and walk of the last section, several times over, each time "
-        f"with the finer picture held in place inside it. The two are joined where the finer picture&rsquo;s strands leave its edge. One square is kept in place there at every "
-        f"stage, on each side, and each is always among the four squares its predecessor became, so the strand and the ring meet at every stage with nothing to patch. Until "
-        f"the last stage those are the only joins; anything else that touches across the seam merely touches. The walk may also rework a strip up to {int(P['COLLAR'])} squares "
-        f"deep just inside the seam, so that the two sides settle against each other: a ring made with nothing outside it comes out thin and short of loose ends along its "
-        f"outer edge.</p>")
+        f"with the finer picture held in place inside it. A ring drawn finer on its own comes out thin along its outer edge, where it has nothing beside it. So each ring is "
+        f"drawn finer together with a strip of its own world just beyond it, {int(P['MARGIN'])} squares deep. The strip is not shown, since the next world&rsquo;s ring belongs there. "
+        f"But at every stage the next ring starts from the strip&rsquo;s first {int(P['BAND'])} rows, the very squares this picture had beside it, and carries on outward with its own. "
+        f"Where its own strands no longer meet those rows they are joined on again by the shortest way, and as many squares are taken from loose ends close by as the join "
+        f"added. At the last stage the walk may also rework a strip up to {int(P['COLLAR'])} squares deep just inside the seam, so that the two sides settle against each other.</p>")
     if E:
         rows = {r[0]: r for r in E["rows"]}; L = E["levels"]; half = B * 2 ** (L + 1); n = E["roots"]
         def row(key, label, d=1, pc=True):
@@ -110,19 +110,20 @@ def out_report(assets=None):
             f"first level is joined on). Set it beside the real squares around the same cell, "
             f"for {n} cells in {E.get('samples', 26)} samples.</p>")
         out.append("\n".join(t for t in tb if t))
-        seam = [(100 * r[3], r[4]) for r in E["rows"] if "seam" in r[0]]; ring = [abs(100 * rows[f"L{k} cells"][3]) for k in range(1, L + 1)]
+        seam = [(100 * r[3], r[4]) for r in E["rows"] if "seam" in r[0]]; ring = [abs(100 * rows[f"L{k} cells"][3]) for k in range(1, L + 1)]; ringd = [-100 * rows[f"L{k} cells"][3] for k in range(1, L + 1)]; words = {3: "three", 4: "four", 5: "five", 6: "six"}
         tex = [abs(100 * r[3]) for r in E["rows"] if r[0].endswith("(per cell)") and "floating" not in r[0] and not r[0].startswith("L1 ") and "4 neigh" not in r[0]]
         nfl = round(rows["floating pieces"][2] * n); atseam = sum(1 for d, z in seam if abs(z) > 2)
         near = [(100 * r[3], r[4]) for r in E["rows"] if "seam" in r[0] and r[0][1] in "12"]; far = [(100 * r[3], r[4]) for r in E["rows"] if "seam" in r[0] and r[0][1] not in "12"]
         out.append(
-            f"<p>Of {len(zs)} such numbers, {big} differ by more than two standard errors, where chance alone would give about {0.05 * len(zs):.0f}. The seams are where an earlier "
-            f"version went wrong: it had 4 to 11% too many squares on either side of every seam, with as many more joins across. Now, at the first two seams the rows of squares "
-            f"on either side and the joins across are within {max(abs(d) for d, z in near):.0f}% of the real ones, none of them more than {max(abs(z) for d, z in near):.1f} standard "
-            f"errors away. At the deeper seams they fall short, by {min(abs(d) for d, z in far):.0f} to {max(abs(d) for d, z in far):.0f}%, and {sum(1 for d, z in far if abs(z) > 2)} "
-            f"of those {len(far)} numbers are beyond two standard errors: a ring that has been drawn finer three or four times meets the picture inside it at too few places. The "
-            f"number of squares in each ring is within {max(ring):.0f}% of the real one and the fine texture within {max(tex):.1f}%. In {n} made pictures there "
+            f"<p>Of {len(zs)} such numbers, {big} differ by more than two standard errors, where chance alone would give about {0.05 * len(zs):.0f}. The seams are where earlier "
+            f"versions went wrong. The first had 4 to 11% too many squares on either side of every seam. The second drew each ring finer on its own and joined it to the picture "
+            f"inside only at one square per crossing; it was right at the first two seams and fell short at the deeper ones, by more the deeper, 12 to 16% at the fifth. Now the "
+            f"rows of squares on either side of the {words[L]} seams and the joins across them are within {max(abs(d) for d, z in seam):.0f}% of the real ones, and "
+            f"{'none' if not atseam else atseam} of those {len(seam)} numbers {'is' if atseam <= 1 else 'are'} beyond two standard errors (the furthest is {max(abs(z) for d, z in seam):.1f} away). "
+            f"What is left is smaller and spread out: the rings beyond the first hold {min(ringd[1:]):.0f} to {max(ringd[1:]):.0f}% fewer squares than the real ones, "
+            f"where the first is within {ring[0]:.1f}%. The fine texture is within {max(tex):.1f}%. In {n} made pictures there "
             f"{'was' if nfl == 1 else 'were'} {nfl if nfl else 'no'} piece{'' if nfl == 1 else 's'} that neither held the starting square nor reached the edge, which a real picture "
-            f"cannot have{' (a stray pair of squares each)' if nfl == 2 else ''}.</p>")
+            f"cannot have.</p>")
     Tl = load("tell_test.json"); Tn = load("tell_null.json")
     if Tl and E:
         pc = lambda k: f"{100 * Tl[k]['correct']:.0f}%"
@@ -131,8 +132,7 @@ def out_report(assets=None):
             f"real ones and then scored on pictures from samples they had not seen. One looks at about 150 summary numbers of a whole picture, the other at 3,000 small windows of "
             f"it, 9 squares wide. A classifier that has found nothing is right half the time. The first calls {pc('summary')} of pictures correctly, the second {pc('patches')}." +
             (f" Set to tell the real pictures of half the samples from those of the other half, where there is nothing to find, they score {100 * Tn['summary']['correct']:.0f}% and "
-             f"{100 * Tn['patches']['correct']:.0f}%." if Tn else "") + (" With the earlier version the first classifier was right 59% of the time, and what it had found was the seams. It still does a little better than chance, "
-             "and the shortfall at the deeper seams is the likeliest reason.") + "</p>")
+             f"{100 * Tn['patches']['correct']:.0f}%." if Tn else "") + " Most of what they find is in the outermost ring: shown only the first four levels they call 56% and 55% correctly. The version before this one, put through the same five levels, was called correctly 65% and 61% of the time." + "</p>")
     if Dp:
         rw = Dp["rows"]; fine = [r for r in rw if r["level"] > Dp["J"]]; h = len(fine) // 2; a, b = fine[:h], fine[h:]
         ms = lambda rs, k: (float(np.mean([r[k] for r in rs])), float(np.std([r[k] for r in rs], ddof=1) / np.sqrt(len(rs))))
@@ -150,12 +150,17 @@ def out_report(assets=None):
             f"{ms(b, 'empty')[0]:.3f} in the second, and {ms(a, 'tips')[0]:.3f} and {ms(b, 'tips')[0]:.3f} squares with a single neighbour; real samples have "
             f"{rows[f'L{L} empty sites next to the shape (per cell)'][1]:.3f} and {rows[f'L{L} with 1 neighbours (per cell)'][1]:.3f}. "
             f"A level takes about {ms(rw, 's')[0]:.0f} seconds to make on one core of a desktop machine, {ms(rw, 'sWorld')[0]:.1f} of them the sampler.</p>" if E else "")
+    Ms = load("mass_test.json"); mass = ""
+    if Ms:
+        m1 = Ms["stages"][1]; mass = f" (in a test on real shapes, dots two to a pixel side light {100 * m1['lit, of real']:.0f}% of the pixels that the real squares light)"
     out.append(
-        f"<p>Three limits should be kept in mind. A world has {int(P['N']):,} squares, not infinitely many, which thins its outer parts; within the ring that is drawn the effect "
+        f"<p>Four limits should be kept in mind. A world has {int(P['N']):,} squares, not infinitely many, which thins its outer parts; within the ring that is drawn the effect "
         f"is under a few per cent. The halving step is an approximation: a shape halved and thinned is not exactly a polyomino drawn at random, only one with the right amount "
-        f"of shape in the right places as far as these counts can tell. And each ring is drawn finer by the zoom-in procedure, which is itself only tested, not proved. Two "
-        f"numbers in all this are set rather than derived, how hard the halving walk thins and how readily the refining walk adds, both by the one requirement that a "
-        f"polyomino at twice the scale has 2.95 times the squares. The sampling in between is exact.</p>")
+        f"of shape in the right places as far as these counts can tell. Each ring is drawn finer by the zoom-in procedure, which is itself only tested, not proved. And far out the picture keeps the look of single squares, "
+        f"which a real shape seen from that far would not: once a dot stands for a block of squares, a real shape would be drawn by how many of its squares fall in each "
+        f"pixel, and that is fuller and less even{mass}. A real zoom would go on changing for three or four levels past the point where squares can no longer be seen; "
+        f"this one does not. Three numbers in all this are set rather than derived, how hard the halving walk thins and how readily the refining walk adds (before its "
+        f"last stage, and at it), all by the one requirement that a polyomino at twice the scale has 2.95 times the squares. The sampling in between is exact.</p>")
     T["ZO_TEXT"] = "\n  ".join(out)
     if assets:
         which = pairs_png(os.path.join(assets, "outpairs.png"))
